@@ -87,7 +87,7 @@ public sealed partial class EntityView : Node3D
             // FIXED_Y e não ENABLED: billboard completo inclinaria o sprite
             // para encarar a câmera inclinada, e o personagem ficaria deitado
             // para trás em vez de em pé.
-            Billboard = BaseMaterial3D.BillboardModeEnum.FixedY,
+            Billboard = BaseMaterial3D.BillboardModeEnum.Enabled,
             // Pivô nos pés: offset.y POSITIVO sobe o sprite no 3D.
             Offset = new Vector2(0, SpriteLayout.FrameHeight / 2.0f),
             TextureFilter = BaseMaterial3D.TextureFilterEnum.Nearest,
@@ -112,7 +112,7 @@ public sealed partial class EntityView : Node3D
         {
             Name = "SpriteFallback",
             Texture = CreatePlaceholderTexture(entity.Id, isLocal, entity.Kind),
-            Billboard = BaseMaterial3D.BillboardModeEnum.FixedY,
+            Billboard = BaseMaterial3D.BillboardModeEnum.Enabled,
             Offset = new Vector2(0, 16),
             TextureFilter = BaseMaterial3D.TextureFilterEnum.Nearest,
             AlphaCut = SpriteBase3D.AlphaCutMode.Discard,
@@ -130,7 +130,7 @@ public sealed partial class EntityView : Node3D
             Name = "Nameplate",
             Text = entity.Name,
             Position = new Vector3(0, BodyHeight * 1.45f, 0),
-            Billboard = BaseMaterial3D.BillboardModeEnum.FixedY,
+            Billboard = BaseMaterial3D.BillboardModeEnum.Enabled,
             FontSize = 48,
             PixelSize = 0.006f,
             Modulate = isLocal ? new Color(1.0f, 0.95f, 0.5f) : Colors.White,
@@ -150,7 +150,7 @@ public sealed partial class EntityView : Node3D
         {
             Name = zOffset > 0.0f ? "HpFill" : "HpBack",
             Texture = ImageTexture.CreateFromImage(image),
-            Billboard = BaseMaterial3D.BillboardModeEnum.FixedY,
+            Billboard = BaseMaterial3D.BillboardModeEnum.Enabled,
             TextureFilter = BaseMaterial3D.TextureFilterEnum.Nearest,
             PixelSize = 1.0f,
             Position = new Vector3(0, BodyHeight * 1.22f, zOffset),
@@ -210,7 +210,7 @@ public sealed partial class EntityView : Node3D
         {
             Text = text,
             Position = new Vector3(0, BodyHeight * 0.8f, 0),
-            Billboard = BaseMaterial3D.BillboardModeEnum.FixedY,
+            Billboard = BaseMaterial3D.BillboardModeEnum.Enabled,
             FontSize = 64,
             PixelSize = 0.006f,
             Modulate = color,
