@@ -46,9 +46,17 @@ public static class SpriteLayout
     /// Cor tratada como fundo. Não é alpha no arquivo: é cor-chave.
     public static readonly Godot.Color BackgroundColor = Godot.Color.FromHtml("9c8b93");
 
-    /// 48 px de altura viram ~1,6 unidade de mundo, deixando o personagem com
-    /// cerca de 1,6 célula de altura — a proporção do Ragnarok.
-    public const float PixelSize = 1.6f / FrameHeight;
+    /// Altura do personagem em unidades de mundo (1 unidade = 1 célula).
+    /// Tudo que flutua sobre ele (nome, barra de vida, dano) é ancorado a
+    /// partir daqui, então mexer só neste número reposiciona o resto junto.
+    public const float BodyHeightUnits = 3.2f;
+
+    /// Quantas unidades de mundo cada pixel da arte ocupa.
+    ///
+    /// Sem suavização em canto nenhum: a textura é construída em tempo de
+    /// execução a partir do PNG cru (sem mipmaps) e desenhada com filtro
+    /// Nearest, então dobrar a escala dobra o pixel em vez de borrá-lo.
+    public const float PixelSize = BodyHeightUnits / FrameHeight;
 
     /// Células de cada (estado, pose), na ordem dos quadros.
     private static readonly Dictionary<(SpriteState, SpritePose), SheetCell[]> Cells = new()

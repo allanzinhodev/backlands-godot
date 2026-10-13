@@ -49,6 +49,11 @@ public sealed partial class EntityView : Node3D
     private double _now;
     private bool _dead;
 
+    // O que já está no sprite, para ApplyPose só mexer nele quando mudar.
+    private SpriteState _appliedState;
+    private Direction _appliedFacing;
+    private bool _applied;
+
     public uint EntityId { get; private set; }
 
     public EntityKind Kind { get; private set; }
@@ -116,7 +121,9 @@ public sealed partial class EntityView : Node3D
             Offset = new Vector2(0, 16),
             TextureFilter = BaseMaterial3D.TextureFilterEnum.Nearest,
             AlphaCut = SpriteBase3D.AlphaCutMode.Discard,
-            PixelSize = 0.05f,
+            // Mesma altura de mundo do sprite real, para o placeholder nao
+            // mudar de tamanho quando a arte entrar. A textura tem 32 px.
+            PixelSize = SpriteLayout.BodyHeightUnits / 32.0f,
             CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
             Visible = _sheet == null,
         };
@@ -304,20 +311,32 @@ public sealed partial class EntityView : Node3D
 
     private void EnterState(SpriteState state)
     {
-        if (_state == state)
-        {
-            return;
-        }
         _state = state;
-        ApplyPose();
     }
 
+    /// <summary>
+    /// Leva o sprite para o par (estado, direção) desejado.
+    ///
+    /// Chamada todo quadro e comparando o DESEJADO com o APLICADO, em vez de
+    /// depender de cada ponto de mudança lembrar de chamá-la. A versão
+    /// anterior só aplicava quando o ESTADO mudava, então começar uma nova
+    /// caminhada enquanto já se andava mantinha a pose e o espelhamento
+    /// antigos — virar para o oeste no meio do caminho não refletia o sprite.
+    /// </summary>
     private void ApplyPose()
     {
         if (_sheet == null)
         {
             return;
         }
+
+        if (_applied && _appliedState == _state && _appliedFacing == _renderFacing)
+        {
+            return;
+        }
+        _applied = true;
+        _appliedState = _state;
+        _appliedFacing = _renderFacing;
 
         var (pose, flip) = SpriteLayout.PoseFor(_renderFacing);
         var animation = SpriteLayout.AnimationName(_state, pose);
@@ -366,6 +385,7 @@ public sealed partial class EntityView : Node3D
 
         AdvanceMovement(delta);
         AdvanceState();
+        ApplyPose();
     }
 
     private void AdvanceMovement(double delta)
@@ -382,10 +402,11 @@ public sealed partial class EntityView : Node3D
             var toTarget = target - Position;
             var distance = toTarget.Length();
 
-            if (_renderFacing != facing && _state == SpriteState.Walk)
+            if (_state == SpriteState.Walk)
             {
+                // Só anota o desejado; quem leva ao sprite é o ApplyPose do fim
+                // do quadro, que compara com o que já está aplicado.
                 _renderFacing = facing;
-                ApplyPose();
             }
 
             if (distance <= budget)
