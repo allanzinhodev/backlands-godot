@@ -1,0 +1,18 @@
+# Godot 4+ specific ignores
+.godot/
+/android/
+
+# Godot .NET
+.mono/
+*.csproj.user
+
+# C++ server (CMake / vcpkg / MSVC)
+server/build/
+server/out/
+server/vcpkg_installed/
+.vs/
+*.user
+
+# OS
+Thumbs.db
+.DS_Store
