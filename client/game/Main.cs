@@ -593,11 +593,12 @@ public sealed partial class Main : Node3D
         {
             return;
         }
-        if (_autoLoginName != null)
+        // Só a execução de CAPTURA ignora o mouse: a janela abre em foco e um
+        // clique acidental já tornou um teste não determinístico. Entrar por
+        // --autologin para jogar continua respondendo normalmente, senão o
+        // atalho de abrir o jogo logado seria injogável.
+        if (_screenshotPath != null)
         {
-            // Em execução automatizada o jogo ignora o mouse: a janela abre em
-            // foco e um clique acidental do operador já causou uma caminhada
-            // inesperada no meio de um teste, tornando-o não determinístico.
             return;
         }
         if (@event is not InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.Left } click)
