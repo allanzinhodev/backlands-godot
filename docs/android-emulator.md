@@ -28,5 +28,8 @@ O encaminhamento precisa ser refeito quando o emulador reiniciar.
 O APK fica em `.playtest/android/backlands-debug.apk`. APKs, templates,
 logs e credenciais de assinatura ficam fora do Git.
 
+O plugin `addons/raw_assets` inclui PNGs e JSONs originais na exportação:
+os carregadores de sprites precisam desses bytes para recortar a arte.
+
 Para outro dispositivo ou caminhos de instalação, use os parâmetros
 `-Device`, `-AndroidSdk` e `-GodotExe` do script.

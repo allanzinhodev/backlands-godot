@@ -38,6 +38,10 @@ window/stretch/aspect="expand"
 
 project/assembly_name="backlands-godot"
 
+[editor_plugins]
+
+enabled=PackedStringArray("res://addons/raw_assets/plugin.cfg")
+
 [input_devices]
 
 pointing/emulate_mouse_from_touch=true

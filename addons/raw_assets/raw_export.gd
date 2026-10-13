@@ -4,6 +4,15 @@ extends EditorExportPlugin
 func _get_name() -> String:
     return "RawRuntimeArt"
 
+func _export_file(path: String, _type: String, _features: PackedStringArray) -> void:
+    # These originals are added once by _export_begin, including JSON files
+    # that an export preset might otherwise include a second time.
+    if path.get_extension().to_lower() in ["png", "json"]:
+        for folder in ["res://spritesheets/", "res://icons/", "res://vfx/"]:
+            if path.begins_with(folder):
+                skip()
+                return
+
 func _export_begin(_features: PackedStringArray, _is_debug: bool, _path: String, _flags: int) -> void:
     for folder in ["res://spritesheets", "res://icons", "res://vfx"]:
         _include_folder(folder)

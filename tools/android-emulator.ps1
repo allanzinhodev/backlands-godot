@@ -10,8 +10,11 @@ $adb = Join-Path $AndroidSdk 'platform-tools\adb.exe'
 $apk = Join-Path $repo '.playtest\android\backlands-debug.apk'
 function Invoke-Checked {
     param([string]$Exe, [string[]]$Arguments)
-    & $Exe @Arguments
-    if ($LASTEXITCODE -ne 0) { throw "$Exe falhou: $LASTEXITCODE" }
+    $previousPreference = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try { & $Exe @Arguments; $code = $LASTEXITCODE }
+    finally { $ErrorActionPreference = $previousPreference }
+    if ($code -ne 0) { throw "$Exe falhou: $code" }
 }
 
 Push-Location $repo
