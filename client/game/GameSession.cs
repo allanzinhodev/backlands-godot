@@ -37,6 +37,10 @@ public sealed partial class GameSession : Node
         _client.RegisterHandler(ServerOpcode.EntitySpawn, World.HandleEntitySpawn);
         _client.RegisterHandler(ServerOpcode.EntityDespawn, World.HandleEntityDespawn);
         _client.RegisterHandler(ServerOpcode.LoginFailed, World.HandleLoginFailed);
+        _client.RegisterHandler(ServerOpcode.MapInfo, World.HandleMapInfo);
+        _client.RegisterHandler(ServerOpcode.MapRow, World.HandleMapRow);
+        _client.RegisterHandler(ServerOpcode.EntityWalk, World.HandleEntityWalk);
+        _client.RegisterHandler(ServerOpcode.EntityStop, World.HandleEntityStop);
         _client.RegisterHandler(ServerOpcode.Pong, HandlePong);
 
         _client.Connected += OnConnected;
@@ -59,6 +63,21 @@ public sealed partial class GameSession : Node
     public void Disconnect(string reason = "pedido do jogador")
     {
         _client.DisconnectFromServer(reason);
+    }
+
+    /// Pede para andar até uma célula. O client manda apenas o destino: o
+    /// caminho, e se ele existe, é decisão do servidor.
+    public void RequestWalk(int cellX, int cellY)
+    {
+        if (cellX < 0 || cellY < 0 || cellX > ushort.MaxValue || cellY > ushort.MaxValue)
+        {
+            return;
+        }
+
+        var writer = new PacketWriter(ClientOpcode.WalkTo);
+        writer.WriteU16((ushort)cellX);
+        writer.WriteU16((ushort)cellY);
+        _client.Send(writer);
     }
 
     /// Mede o RTT. O servidor devolve o nonce intacto em S_PONG.

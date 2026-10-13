@@ -1,0 +1,14 @@
+; Cena principal. Deliberadamente mínima: só a raiz com o script.
+;
+; Câmera, luz, mapa, entidades e UI são montados em Main.cs, porque é
+; comportamento — e código o compilador verifica, .tscn escrito à mão não.
+;
+; format=3 é o formato do Godot 4.x (não existe format=4 no 4.7).
+; load_steps é apenas uma dica de pré-alocação; uid= em ext_resource é opcional.
+
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://client/game/Main.cs" id="1_main"]
+
+[node name="Main" type="Node3D"]
+script = ExtResource("1_main")

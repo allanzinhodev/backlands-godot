@@ -18,6 +18,9 @@ server/vcpkg_installed/
 # Editor
 .vscode/
 
+# Saída do playtest (logs e capturas de tela)
+.playtest/
+
 # OS
 Thumbs.db
 .DS_Store

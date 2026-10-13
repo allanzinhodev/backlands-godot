@@ -148,16 +148,22 @@ bool World::request_walk(net::Session& session, Cell destination) {
     // tem como forçar posição — ele só sugere um destino.
     WalkPath path = find_path(map_.grid, entity->cell, destination);
     if (path.empty()) {
-        // Recusa silenciosa: o client já sabe o grid e pode dar o feedback.
-        // Mandar o stop devolve a posição autoritativa, caso ele tenha
-        // começado a animar otimisticamente.
+        log::info("sessão {} / entidade {}: destino ({}, {}) recusado", session.id(), entity->id,
+                  destination.x, destination.y);
+        // O client já tem o grid e pode dar o feedback visual. Mandar o stop
+        // devolve a posição autoritativa, caso ele tenha começado a animar
+        // otimisticamente.
         session.send(make_stop_frame(*entity));
         return true;
     }
 
+    const std::size_t steps = path.size();
     if (!begin_walk(*entity, std::move(path), destination, world_time_ms_)) {
         return true;
     }
+
+    log::info("sessão {} / entidade {}: ({}, {}) -> ({}, {}) em {} passo(s)", session.id(),
+              entity->id, entity->cell.x, entity->cell.y, destination.x, destination.y, steps);
 
     // Todos veem a caminhada, inclusive quem pediu: a origem do movimento é
     // sempre a posição autoritativa do servidor.

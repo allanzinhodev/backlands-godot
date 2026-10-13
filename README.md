@@ -19,6 +19,23 @@ tools/export_grid/      exportador do grid lógico (Godot tool script)
 docs/                   GDD, protocolo, notas de estudo
 ```
 
+## Jogar / testar
+
+```powershell
+cd server; .\build.ps1; cd ..     # compila o servidor (só na primeira vez)
+.\tools\playtest.ps1              # sobe o servidor e abre 2 clientes
+```
+
+Cada janela entra com um personagem próprio. **Clique no chão para andar.** O rio só é
+atravessável pela ponte: clicar na água não move, porque o servidor recusa o destino.
+
+```powershell
+.\tools\playtest.ps1 -Clients 1       # um cliente só
+.\tools\playtest.ps1 -Screenshot      # automatizado: salva PNGs em .playtest/ e encerra
+```
+
+Para derrubar o servidor: `Get-Process backlands_server | Stop-Process`.
+
 ## Build do server
 
 Requisitos: Visual Studio com toolset C++ (MSVC), vcpkg com `VCPKG_ROOT` definido.
