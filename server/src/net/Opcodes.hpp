@@ -11,6 +11,7 @@ enum class ClientOpcode : std::uint16_t {
     Ping = 0x0001,
     Login = 0x0002,
     WalkTo = 0x0003,
+    Attack = 0x0004,
 };
 
 enum class ServerOpcode : std::uint16_t {
@@ -23,6 +24,10 @@ enum class ServerOpcode : std::uint16_t {
     MapRow = 0x1007,
     EntityWalk = 0x1008,
     EntityStop = 0x1009,
+    EntityAttack = 0x100A,
+    EntityDied = 0x100B,
+    EntityRespawn = 0x100C,
+    AttackRejected = 0x100D,
 };
 
 [[nodiscard]] constexpr std::uint16_t to_raw(ClientOpcode opcode) noexcept {

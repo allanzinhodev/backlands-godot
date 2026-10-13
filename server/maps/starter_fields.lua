@@ -60,4 +60,60 @@ return {
     "#.............~~~..............#", -- y=30
     "################################", -- y=31  borda
   },
+
+  -- Modelos de monstro. view_range = 0 significa PASSIVO: não inicia combate,
+  -- mas revida em quem o atacar.
+  --
+  -- Os números do Slime são os do Poring do Ragnarok (mob id 1002), para servir
+  -- de âncora de balanceamento: HP 50, dano 7..10, sem defesa, 400 ms por
+  -- célula, 1872 ms entre golpes com 672 ms de animação.
+  monsters = {
+    slime = {
+      name = "Slime",
+      max_hp = 50,
+      attack_min = 7,
+      attack_max = 10,
+      defense_percent = 0,
+      defense_flat = 0,
+      hit = 55,              -- erra bastante num jogador comum
+      flee = 50,
+      attack_range = 1,
+      attack_delay_ms = 1872,
+      attack_motion_ms = 672,
+      walk_speed_ms = 400,
+      view_range = 0,        -- passivo, como o Poring de verdade
+      chase_range = 12,
+      respawn_delay_ms = 8000,
+    },
+
+    lobo = {
+      name = "Lobo",
+      max_hp = 70,
+      attack_min = 12,
+      attack_max = 18,
+      defense_percent = 5,
+      defense_flat = 1,
+      hit = 75,
+      flee = 65,
+      attack_range = 1,
+      attack_delay_ms = 1100,
+      attack_motion_ms = 500,
+      walk_speed_ms = 280,   -- mais rápido que o jogador
+      view_range = 7,        -- agressivo: persegue quem chega perto
+      chase_range = 12,
+      respawn_delay_ms = 12000,
+    },
+  },
+
+  -- Pontos de nascimento. `spread` espalha os monstros em torno da célula para
+  -- não nascerem empilhados.
+  spawns = {
+    -- Slimes na margem oeste, perto do spawn do jogador: alvo seguro para
+    -- testar o combate sem morrer.
+    { monster = "slime", x = 9, y = 20, count = 3, spread = 3 },
+    { monster = "slime", x = 8, y = 10, count = 2, spread = 2 },
+
+    -- Lobos na margem leste, depois da ponte: atravessar o rio custa caro.
+    { monster = "lobo", x = 24, y = 12, count = 2, spread = 3 },
+  },
 }

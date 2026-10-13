@@ -92,7 +92,23 @@ void install_handlers(PacketDispatcher& dispatcher) {
             return false;
         }
 
+        // Andar cancela o ataque em curso, como no Ragnarok: mover é uma
+        // decisão do jogador que substitui a anterior.
+        if (game::Entity* entity = world.entities().find_by_session(session.id())) {
+            entity->combat.clear_target();
+        }
         return world.request_walk(session, game::Cell{x, y});
+    });
+
+    // C_ATTACK: o client só escolhe o ALVO. Quando o golpe sai, se sai, e
+    // quanto tira é decisão do servidor no tick.
+    dispatcher.register_handler(ClientOpcode::Attack,
+                                [&world](Session& session, PacketReader& reader) {
+        const std::uint32_t target_id = reader.read_u32();
+        if (reader.failed()) {
+            return false;
+        }
+        return world.request_attack(session, target_id);
     });
 }
 

@@ -3,6 +3,7 @@
 #include "game/Entity.hpp"
 #include "game/EntityRegistry.hpp"
 #include "game/MapGrid.hpp"
+#include "game/MonsterAi.hpp"
 #include "net/Session.hpp"
 
 #include <cstddef>
@@ -44,6 +45,11 @@ public:
     // (sessão sem entidade); destino inválido é recusa normal, não violação.
     bool request_walk(net::Session& session, Cell destination);
 
+    // Pedido de ataque. Seleciona o alvo; o golpe em si sai no tick, quando o
+    // alcance e o cooldown permitirem. Devolve false só em violação de
+    // protocolo (sessão sem entidade no mundo).
+    bool request_attack(net::Session& session, EntityId target_id);
+
     // Envia o frame a todas as sessões, opcionalmente pulando uma.
     void broadcast(const std::vector<std::byte>& frame, net::SessionId except = 0);
 
@@ -56,16 +62,28 @@ public:
     // governa o movimento — o que mantém a simulação determinística.
     [[nodiscard]] std::uint32_t now_ms() const noexcept { return world_time_ms_; }
 
+    // Quanto tempo um jogador fica caído antes de voltar ao ponto inicial.
+    static constexpr std::uint32_t kPlayerRespawnDelayMs = 5000;
+
 private:
     void send_map(net::Session& session);
     void send_existing_entities(net::Session& session, EntityId skip_id);
     void sweep_closed_sessions();
+    void spawn_map_monsters();
+    void advance_chasing();
+    void advance_respawns();
+    void advance_monsters();
+    void publish_combat_events();
 
     std::unordered_map<net::SessionId, net::SessionPtr> sessions_;
     EntityRegistry entities_;
     MapDefinition map_;
     std::uint64_t tick_count_ = 0;
     std::uint32_t world_time_ms_ = 0;
+
+    // Semente fixa: o mundo é reproduzível entre execuções, o que torna um
+    // playtest comparável com o anterior.
+    Rng rng_{0xB4C41A1Du};
 };
 
 } // namespace backlands::game

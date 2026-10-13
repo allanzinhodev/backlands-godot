@@ -190,7 +190,84 @@ MapDefinition load_map_from_lua(const std::string& path) {
                                             definition.spawn.x, definition.spawn.y));
     }
 
+    // --- Monstros (opcional) ----------------------------------------------
+    if (const sol::optional<sol::table> monsters = root["monsters"]) {
+        for (const auto& [key, value] : *monsters) {
+            MonsterTemplate monster;
+            monster.species = key.as<std::string>();
+
+            const sol::table entry = value.as<sol::table>();
+            monster.name = entry.get_or("name", monster.species);
+            monster.max_hp = entry.get_or("max_hp", monster.max_hp);
+            monster.attack_min = entry.get_or("attack_min", monster.attack_min);
+            monster.attack_max = entry.get_or("attack_max", monster.attack_max);
+            monster.defense_percent = entry.get_or("defense_percent", monster.defense_percent);
+            monster.defense_flat = entry.get_or("defense_flat", monster.defense_flat);
+            monster.hit = entry.get_or("hit", monster.hit);
+            monster.flee = entry.get_or("flee", monster.flee);
+            monster.attack_motion_ms = entry.get_or("attack_motion_ms", monster.attack_motion_ms);
+            monster.attack_range = entry.get_or("attack_range", monster.attack_range);
+            monster.attack_delay_ms = entry.get_or("attack_delay_ms", monster.attack_delay_ms);
+            monster.walk_speed_ms = entry.get_or("walk_speed_ms", monster.walk_speed_ms);
+            monster.view_range = entry.get_or("view_range", monster.view_range);
+            monster.chase_range = entry.get_or("chase_range", monster.chase_range);
+            monster.respawn_delay_ms = entry.get_or("respawn_delay_ms", monster.respawn_delay_ms);
+
+            if (monster.max_hp <= 0) {
+                throw std::runtime_error(
+                    std::format("mapa: monstro '{}' com max_hp <= 0", monster.species));
+            }
+            definition.monsters.push_back(std::move(monster));
+        }
+    }
+
+    if (const sol::optional<sol::table> spawns = root["spawns"]) {
+        for (std::size_t i = 1; i <= spawns->size(); ++i) {
+            const sol::optional<sol::table> entry = (*spawns)[i];
+            if (!entry.has_value()) {
+                throw std::runtime_error(std::format("mapa: spawn {} não é uma tabela", i));
+            }
+
+            MonsterSpawn spawn;
+            spawn.species = entry->get_or("monster", std::string{});
+            if (spawn.species.empty()) {
+                throw std::runtime_error(std::format("mapa: spawn {} sem campo 'monster'", i));
+            }
+            if (definition.find_monster(spawn.species) == nullptr) {
+                // Erro de digitação aqui criaria um ponto de spawn mudo, que
+                // só apareceria como "o monstro não nasce" num playtest.
+                throw std::runtime_error(std::format(
+                    "mapa: spawn {} referencia monstro '{}' que não está em 'monsters'", i,
+                    spawn.species));
+            }
+
+            const sol::optional<int> x = (*entry)["x"];
+            const sol::optional<int> y = (*entry)["y"];
+            if (!x.has_value() || !y.has_value() || *x < 0 || *y < 0) {
+                throw std::runtime_error(std::format("mapa: spawn {} precisa de x e y", i));
+            }
+            spawn.cell = Cell{static_cast<std::uint16_t>(*x), static_cast<std::uint16_t>(*y)};
+            spawn.count = entry->get_or("count", spawn.count);
+            spawn.spread = entry->get_or("spread", spawn.spread);
+
+            if (!definition.grid.is_walkable(spawn.cell)) {
+                throw std::runtime_error(std::format(
+                    "mapa: spawn {} em ({}, {}) não é caminhável", i, spawn.cell.x, spawn.cell.y));
+            }
+            definition.spawns.push_back(std::move(spawn));
+        }
+    }
+
     return definition;
+}
+
+const MonsterTemplate* MapDefinition::find_monster(std::string_view species) const noexcept {
+    for (const MonsterTemplate& monster : monsters) {
+        if (monster.species == species) {
+            return &monster;
+        }
+    }
+    return nullptr;
 }
 
 } // namespace backlands::game

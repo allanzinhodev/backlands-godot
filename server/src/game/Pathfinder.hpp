@@ -68,4 +68,11 @@ inline constexpr int kMoveDiagonalCost = 14; // ~10 * raiz(2)
 // Direção dominante de `from` para `to`, para virar o personagem.
 [[nodiscard]] Direction direction_towards(Cell from, Cell to) noexcept;
 
+// Há linha de visão entre duas células? Percorre a reta entre elas e falha se
+// alguma célula do meio bloqueia visão. As pontas não contam: estar em cima de
+// uma pedra não deve cegar quem está nela.
+//
+// É o que impede um monstro de enxergar o jogador através de uma parede.
+[[nodiscard]] bool has_line_of_sight(const MapGrid& grid, Cell from, Cell to);
+
 } // namespace backlands::game

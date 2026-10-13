@@ -32,6 +32,20 @@ EntityRegistry::SpawnResult EntityRegistry::spawn_player(std::uint32_t session_i
     return {id, SpawnError::None};
 }
 
+Entity& EntityRegistry::spawn_monster(std::string_view name, Cell cell) {
+    const EntityId id = next_id_++;
+
+    Entity entity;
+    entity.id = id;
+    entity.name = std::string(name);
+    entity.cell = cell;
+    entity.facing = Direction::South;
+    entity.kind = EntityKind::Monster;
+    entity.session_id = 0;
+
+    return entities_.emplace(id, std::move(entity)).first->second;
+}
+
 EntityId EntityRegistry::despawn_session(std::uint32_t session_id) {
     const auto it = session_to_entity_.find(session_id);
     if (it == session_to_entity_.end()) {

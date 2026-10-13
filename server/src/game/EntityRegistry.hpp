@@ -33,6 +33,11 @@ public:
     // Cria a entidade de um jogador. `session_id` precisa ser diferente de 0.
     SpawnResult spawn_player(std::uint32_t session_id, std::string_view name, Cell cell);
 
+    // Cria um monstro. Sem sessão e sem as regras de nome dos jogadores: o
+    // nome vem do arquivo de mapa, não de entrada de usuário, e vários
+    // monstros da mesma espécie compartilham o mesmo nome de propósito.
+    Entity& spawn_monster(std::string_view name, Cell cell);
+
     // Remove a entidade da sessão. Devolve o id removido, ou kNoEntity se a
     // sessão não tinha entidade (desconexão antes do login, por exemplo).
     EntityId despawn_session(std::uint32_t session_id);

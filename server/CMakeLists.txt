@@ -16,9 +16,11 @@ find_package(Lua REQUIRED)
 # ---------------------------------------------------------------------------
 add_library(backlands_core STATIC
     src/core/Config.cpp
+    src/game/Combat.cpp
     src/game/Entity.cpp
     src/game/EntityRegistry.cpp
     src/game/MapGrid.cpp
+    src/game/MonsterAi.cpp
     src/game/Movement.cpp
     src/game/Pathfinder.cpp
     src/net/PacketWriter.cpp
@@ -77,6 +79,8 @@ if(BUILD_TESTING)
         tests/test_pathfinding.cpp
         tests/test_map_loading.cpp
         tests/test_movement.cpp
+        tests/test_combat.cpp
+        tests/test_monster_ai.cpp
     )
     target_link_libraries(backlands_tests PRIVATE backlands_core Catch2::Catch2WithMain)
     # Permite ao teste validar o config.lua real do repositório, não só os

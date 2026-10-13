@@ -7,6 +7,7 @@ bool is_known_client_opcode(std::uint16_t raw) noexcept {
         case ClientOpcode::Ping:
         case ClientOpcode::Login:
         case ClientOpcode::WalkTo:
+        case ClientOpcode::Attack:
             return true;
     }
     return false;
@@ -20,6 +21,8 @@ const char* client_opcode_name(std::uint16_t raw) noexcept {
             return "C_LOGIN";
         case ClientOpcode::WalkTo:
             return "C_WALK_TO";
+        case ClientOpcode::Attack:
+            return "C_ATTACK";
     }
     return "UNKNOWN";
 }
