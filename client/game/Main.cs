@@ -111,6 +111,10 @@ public sealed partial class Main : Node3D
             {
                 _screenshotPath = arg["--screenshot=".Length..];
             }
+            else if (arg == "--map-preview")
+            {
+                _mapPreview = true;
+            }
             else if (arg == "--attack-nearest")
             {
                 _autoAttackNearest = true;
@@ -122,6 +126,12 @@ public sealed partial class Main : Node3D
             }
         }
 
+        if (_mapPreview)
+        {
+            EnterMapPreview();
+            return;
+        }
+
         if (_autoLoginName != null)
         {
             _nameField.Text = _autoLoginName;
@@ -131,6 +141,33 @@ public sealed partial class Main : Node3D
     }
 
     // --- Montagem da cena --------------------------------------------------
+
+    private bool _mapPreview;
+
+    private void EnterMapPreview()
+    {
+        // Read the actual server layout for an offline art preview.
+        var source = FileAccess.GetFileAsString("res://server/maps/starter_fields.lua");
+        var rows = System.Text.RegularExpressions.Regex.Matches(source, "\"([#.~=:T]{32})\"");
+        var map = new MapData();
+        map.Begin("starter_fields", 32, rows.Count);
+        for (var y = 0; y < rows.Count; y++)
+        {
+            var row = new byte[32];
+            for (var x = 0; x < 32; x++)
+                row[x] = rows[y].Groups[1].Value[x] switch
+                {
+                    '~' => 0x10, '#' => 0x22, '=' => 0x31, ':' => 0x41,
+                    'T' => 0x02, _ => 0x01,
+                };
+            map.SetRow(y, row);
+        }
+        _mapRenderer.Build(map);
+        _loginPanel.Visible = false;
+        _camera.Size = 39;
+        _camera.Position = new Vector3(16, 0, 16) + CameraOffset();
+        if (_screenshotPath != null) _framesUntilScreenshot = _screenshotDelayFrames;
+    }
 
     private void BuildEnvironment()
     {
@@ -485,6 +522,12 @@ public sealed partial class Main : Node3D
         {
             return;
         }
+        if (_mapPreview)
+        {
+            EnterMapPreview();
+            return;
+        }
+
         if (_autoLoginName != null)
         {
             // Em execução automatizada o jogo ignora o mouse: a janela abre em
