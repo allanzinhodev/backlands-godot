@@ -37,24 +37,29 @@ começar só com a linha 1.
 
 ## Direções: 2 poses desenhadas, 8 usadas
 
-**Desenhe `front` e `back` viradas para a direita.** O espelhamento horizontal cobre a
-esquerda:
+**Desenhe `front` e `back` viradas para a esquerda** — é como as folhas atuais estão, medido
+na própria arte (nas células de frente os olhos ficam à esquerda do centro da cabeça). O
+espelhamento horizontal cobre o lado direito:
 
 | Direção | Na tela | Pose | Espelhar |
 |---|---|---|---|
-| SouthEast | para baixo, de frente | `front` | não |
-| East | baixo-direita | `front` | não |
-| NorthEast | direita (perfil) | `front` | não |
-| South | baixo-esquerda | `front` | **sim** |
-| SouthWest | esquerda (perfil) | `front` | **sim** |
-| NorthWest | para cima, de costas | `back` | não |
-| North | cima-direita | `back` | não |
-| West | cima-esquerda | `back` | **sim** |
+| South | baixo-esquerda | `front` | não |
+| SouthWest | esquerda (perfil) | `front` | não |
+| SouthEast | para baixo, de frente | `front` | não (simétrica) |
+| East | baixo-direita | `front` | **sim** |
+| NorthEast | direita (perfil) | `front` | **sim** |
+| West | cima-esquerda | `back` | não |
+| NorthWest | para cima, de costas | `back` | não (simétrica) |
+| North | cima-direita | `back` | **sim** |
+
+Se um dia a arte vier desenhada para o outro lado, basta trocar
+`SpriteLayout.ArtFacesScreenLeft` — todos os espelhamentos se invertem de uma vez.
 
 A câmera tem guinada de 45°, então a bússola lógica aparece girada na tela: a **pose** vem do
 componente vertical (descendo mostra a frente, subindo mostra as costas) e o **espelho** vem do
-horizontal. As duas direções de perfil puro (NorthEast e SouthWest) não têm componente vertical
-e usam `front`, que é como o personagem é mais visto.
+horizontal — espelha quem aponta para o lado oposto àquele em que a arte foi desenhada. As duas
+direções de perfil puro (NorthEast e SouthWest) não têm componente vertical e usam `front`, que
+é como o personagem é mais visto.
 
 Mexer no ângulo da câmera muda quais direções são espelho de quais; por isso a tabela é
 conferida contra a câmera real e um desencontro vira erro visível, não arte sutilmente trocada.

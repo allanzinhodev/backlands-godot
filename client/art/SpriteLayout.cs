@@ -111,25 +111,49 @@ public static class SpriteLayout
     public static Direction Mirror(Direction direction) =>
         (Direction)((14 - (int)direction) % 8);
 
+    /// <summary>
+    /// Para que lado da tela as poses estão DESENHADAS.
+    ///
+    /// Medido na arte: nas células de frente das folhas em spritesheets/, os
+    /// olhos ficam à esquerda do centro da cabeça, então o personagem encara a
+    /// esquerda. Trocar este booleano inverte todos os espelhamentos de uma
+    /// vez, que é o ajuste necessário se um dia a arte vier desenhada ao
+    /// contrário.
+    /// </summary>
+    public const bool ArtFacesScreenLeft = true;
+
     /// (pose, espelhar) para cada direção lógica.
     ///
     /// A pose vem do componente VERTICAL na tela (descendo mostra a frente,
-    /// subindo mostra as costas) e o espelho vem do componente HORIZONTAL
-    /// (indo para a esquerda). As duas direções de perfil puro (NorthEast e
-    /// SouthWest) não têm componente vertical e usam a frente, que é como o
-    /// personagem é mais visto.
-    public static (SpritePose Pose, bool Flip) PoseFor(Direction direction) => direction switch
+    /// subindo mostra as costas) e o espelho vem do componente HORIZONTAL:
+    /// espelha quem aponta para o lado OPOSTO àquele em que a arte foi
+    /// desenhada. As duas direções de perfil puro (NorthEast e SouthWest) não
+    /// têm componente vertical e usam a frente, que é como o personagem é
+    /// mais visto.
+    public static (SpritePose Pose, bool Flip) PoseFor(Direction direction)
     {
-        Direction.SouthEast => (SpritePose.Front, false),
-        Direction.East => (SpritePose.Front, false),
-        Direction.NorthEast => (SpritePose.Front, false),
-        Direction.South => (SpritePose.Front, true),
-        Direction.SouthWest => (SpritePose.Front, true),
-        Direction.NorthWest => (SpritePose.Back, false),
-        Direction.North => (SpritePose.Back, false),
-        Direction.West => (SpritePose.Back, true),
-        _ => (SpritePose.Front, false),
-    };
+        var (pose, pointsScreenRight) = direction switch
+        {
+            // Descem na tela: mostram a frente.
+            Direction.SouthEast => (SpritePose.Front, (bool?)null), // reto para baixo
+            Direction.South => (SpritePose.Front, false),
+            Direction.SouthWest => (SpritePose.Front, false),
+            Direction.East => (SpritePose.Front, true),
+            Direction.NorthEast => (SpritePose.Front, true),
+
+            // Sobem na tela: mostram as costas.
+            Direction.NorthWest => (SpritePose.Back, (bool?)null), // reto para cima
+            Direction.West => (SpritePose.Back, false),
+            Direction.North => (SpritePose.Back, true),
+
+            _ => (SpritePose.Front, (bool?)null),
+        };
+
+        // Direção sem componente horizontal é simétrica: espelhar não muda nada.
+        var flip = pointsScreenRight.HasValue
+                   && pointsScreenRight.Value == ArtFacesScreenLeft;
+        return (pose, flip);
+    }
 
     /// <summary>
     /// Confere a tabela acima contra a câmera de verdade e devolve o que estiver
@@ -160,7 +184,8 @@ public static class SpriteLayout
                 > 0.01f => SpritePose.Back,   // subindo: vai embora
                 _ => SpritePose.Front,        // perfil puro
             };
-            var flipFromScreen = screenX < -0.01f;
+            // Espelha quem aponta para o lado oposto ao que a arte foi desenhada.
+            var flipFromScreen = ArtFacesScreenLeft ? screenX > 0.01f : screenX < -0.01f;
 
             if (expected.Pose != poseFromScreen || expected.Flip != flipFromScreen)
             {
