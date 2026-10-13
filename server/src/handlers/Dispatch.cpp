@@ -6,6 +6,7 @@
 #include "net/PacketWriter.hpp"
 #include "net/Session.hpp"
 
+#include <string>
 #include <utility>
 
 namespace backlands::net {
@@ -48,6 +49,10 @@ void PacketDispatcher::on_session_closed(Session& session) {
 }
 
 void install_handlers(PacketDispatcher& dispatcher) {
+    // Capturado por referência: o World é criado antes do dispatcher em main()
+    // e destruído depois dele.
+    game::World& world = dispatcher.world();
+
     // C_PING -> S_PONG. Devolve o nonce para o client medir RTT.
     dispatcher.register_handler(ClientOpcode::Ping, [](Session& session, PacketReader& reader) {
         const std::uint32_t nonce = reader.read_u32();
@@ -59,6 +64,22 @@ void install_handlers(PacketDispatcher& dispatcher) {
         writer.write_u32(nonce);
         session.send(writer.finish());
         return true;
+    });
+
+    // C_LOGIN -> S_ENTER_WORLD (+ S_ENTITY_SPAWN aos demais) ou S_LOGIN_FAILED.
+    dispatcher.register_handler(ClientOpcode::Login,
+                                [&world](Session& session, PacketReader& reader) {
+        const std::string name = reader.read_string();
+        if (reader.failed()) {
+            return false;
+        }
+
+        const auto error = world.try_login(session, name);
+
+        // Nome inválido ou em uso é erro de usuário: mantém a conexão para ele
+        // tentar outro nome. Já estar no mundo é erro de protocolo — nenhum
+        // client correto manda dois logins — então a sessão cai.
+        return error != game::EntityRegistry::SpawnError::AlreadySpawned;
     });
 }
 

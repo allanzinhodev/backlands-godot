@@ -16,6 +16,8 @@ find_package(Lua REQUIRED)
 # ---------------------------------------------------------------------------
 add_library(backlands_core STATIC
     src/core/Config.cpp
+    src/game/Entity.cpp
+    src/game/EntityRegistry.cpp
     src/net/PacketWriter.cpp
     src/net/Opcodes.cpp
 )
@@ -65,6 +67,7 @@ if(BUILD_TESTING)
     add_executable(backlands_tests
         tests/test_packet_codec.cpp
         tests/test_config.cpp
+        tests/test_entity_registry.cpp
     )
     target_link_libraries(backlands_tests PRIVATE backlands_core Catch2::Catch2WithMain)
     # Permite ao teste validar o config.lua real do repositório, não só os
