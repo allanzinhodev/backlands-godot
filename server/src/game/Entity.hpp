@@ -1,8 +1,10 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <string>
 #include <string_view>
+#include <vector>
 
 // Tipos básicos do mundo. Sem nenhum include de Asio por design, para que as
 // regras de entidade sejam testáveis sem socket.
@@ -42,12 +44,40 @@ inline constexpr std::uint8_t kDirectionCount = 8;
     return raw < kDirectionCount;
 }
 
+// Velocidade padrão de caminhada, em milissegundos por célula. 150 ms é o
+// valor clássico do Ragnarok para um personagem sem bônus de AGI.
+inline constexpr std::uint16_t kDefaultWalkSpeedMs = 150;
+
+// Caminhada em andamento. O caminho é a sequência de direções que o servidor
+// vai percorrer, uma célula por vez — o mesmo formato enviado ao client, para
+// que os dois percorram exatamente as mesmas células.
+struct WalkState {
+    std::vector<Direction> path;
+    std::size_t next_step = 0;
+
+    // Instante (no relógio lógico do mundo) em que o próximo passo vence.
+    std::uint32_t next_step_at_ms = 0;
+
+    std::uint16_t speed_ms_per_cell = kDefaultWalkSpeedMs;
+
+    // Destino pedido, guardado para log e para eventual re-rota.
+    Cell destination;
+
+    [[nodiscard]] bool walking() const noexcept { return next_step < path.size(); }
+
+    void clear() noexcept {
+        path.clear();
+        next_step = 0;
+    }
+};
+
 // Uma entidade do mundo: player, monstro ou NPC.
 struct Entity {
     EntityId id = kNoEntity;
     std::string name;
     Cell cell;
     Direction facing = Direction::South;
+    WalkState walk;
 
     // Sessão que controla esta entidade; 0 para entidades sem jogador
     // (monstros e NPCs, que entram nos marcos seguintes).

@@ -13,4 +13,10 @@ return {
   simulation = {
     ticks_per_second = 20,
   },
+
+  world = {
+    -- O grid deste arquivo é a fonte de verdade sobre passagem, e é enviado
+    -- ao client para que o visual não possa divergir da lógica.
+    map = "maps/starter_fields.lua",
+  },
 }

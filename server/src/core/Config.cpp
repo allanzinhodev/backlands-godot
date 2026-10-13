@@ -68,6 +68,13 @@ ServerConfig ServerConfig::load_from_file(const std::string& path) {
     config.ticks_per_second = require_integer<std::uint32_t>(simulation, "simulation",
                                                              "ticks_per_second", 1, 240);
 
+    const sol::table world = require_table(*root, "world");
+    const sol::optional<std::string> map_path = world["map"];
+    if (!map_path.has_value() || map_path->empty()) {
+        throw std::runtime_error("config: campo obrigatório ausente: world.map");
+    }
+    config.map_path = *map_path;
+
     return config;
 }
 

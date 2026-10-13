@@ -18,6 +18,9 @@ add_library(backlands_core STATIC
     src/core/Config.cpp
     src/game/Entity.cpp
     src/game/EntityRegistry.cpp
+    src/game/MapGrid.cpp
+    src/game/Movement.cpp
+    src/game/Pathfinder.cpp
     src/net/PacketWriter.cpp
     src/net/Opcodes.cpp
 )
@@ -50,12 +53,15 @@ else()
     target_compile_options(backlands_core PUBLIC -Wall -Wextra)
 endif()
 
-# O executável espera encontrar config.lua ao lado dele.
+# O executável espera encontrar config.lua e maps/ ao lado dele.
 add_custom_command(TARGET backlands_server POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
             "${CMAKE_CURRENT_SOURCE_DIR}/config.lua"
             "$<TARGET_FILE_DIR:backlands_server>/config.lua"
-    COMMENT "Copiando config.lua para o diretório do executável"
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+            "${CMAKE_CURRENT_SOURCE_DIR}/maps"
+            "$<TARGET_FILE_DIR:backlands_server>/maps"
+    COMMENT "Copiando config.lua e maps/ para o diretório do executável"
 )
 
 # ---------------------------------------------------------------------------
@@ -68,12 +74,16 @@ if(BUILD_TESTING)
         tests/test_packet_codec.cpp
         tests/test_config.cpp
         tests/test_entity_registry.cpp
+        tests/test_pathfinding.cpp
+        tests/test_map_loading.cpp
+        tests/test_movement.cpp
     )
     target_link_libraries(backlands_tests PRIVATE backlands_core Catch2::Catch2WithMain)
     # Permite ao teste validar o config.lua real do repositório, não só os
     # temporários — quebrar o arquivo de produção precisa falhar o build.
     target_compile_definitions(backlands_tests PRIVATE
-        BACKLANDS_REPO_CONFIG="${CMAKE_CURRENT_SOURCE_DIR}/config.lua")
+        BACKLANDS_REPO_CONFIG="${CMAKE_CURRENT_SOURCE_DIR}/config.lua"
+        BACKLANDS_REPO_MAP="${CMAKE_CURRENT_SOURCE_DIR}/maps/starter_fields.lua")
 
     # Um único teste no ctest rodando o binário inteiro, em vez de
     # catch_discover_tests: aquele devolve cada nome de caso como filtro na

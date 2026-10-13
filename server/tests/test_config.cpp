@@ -46,6 +46,7 @@ TEST_CASE("configuração válida é carregada") {
         return {
           network = { port = 9999 },
           simulation = { ticks_per_second = 30 },
+          world = { map = "maps/starter_fields.lua" },
         }
     )");
 
@@ -78,16 +79,31 @@ TEST_CASE("arquivo que não retorna tabela é rejeitado") {
 
 TEST_CASE("seção ausente é rejeitada em vez de usar default silencioso") {
     SECTION("sem network") {
-        const TempConfig config("return { simulation = { ticks_per_second = 20 } }");
+        const TempConfig config(
+            "return { simulation = { ticks_per_second = 20 }, world = { map = 'm.lua' } }");
         CHECK_THROWS_WITH(ServerConfig::load_from_file(config.path()),
                           ContainsSubstring("seção obrigatória ausente: network"));
     }
 
     SECTION("sem simulation") {
-        const TempConfig config("return { network = { port = 7777 } }");
+        const TempConfig config(
+            "return { network = { port = 7777 }, world = { map = 'm.lua' } }");
         CHECK_THROWS_WITH(ServerConfig::load_from_file(config.path()),
                           ContainsSubstring("seção obrigatória ausente: simulation"));
     }
+}
+
+TEST_CASE("mapa ausente na config é rejeitado") {
+    // Sem mapa o servidor não tem grid, e sem grid não há validação de
+    // movimento — falhar no boot é melhor que subir sem autoridade.
+    const TempConfig config(R"(
+        return {
+          network = { port = 7777 },
+          simulation = { ticks_per_second = 20 },
+        }
+    )");
+    CHECK_THROWS_WITH(ServerConfig::load_from_file(config.path()),
+                      ContainsSubstring("world"));
 }
 
 TEST_CASE("campo ausente é rejeitado") {
@@ -95,6 +111,7 @@ TEST_CASE("campo ausente é rejeitado") {
         return {
           network = {},
           simulation = { ticks_per_second = 20 },
+          world = { map = "m.lua" },
         }
     )");
     CHECK_THROWS_WITH(ServerConfig::load_from_file(config.path()),
@@ -107,6 +124,7 @@ TEST_CASE("valores fora da faixa são rejeitados") {
             return {
               network = { port = 0 },
               simulation = { ticks_per_second = 20 },
+              world = { map = "m.lua" },
             }
         )");
         CHECK_THROWS_WITH(ServerConfig::load_from_file(config.path()),
@@ -118,6 +136,7 @@ TEST_CASE("valores fora da faixa são rejeitados") {
             return {
               network = { port = 70000 },
               simulation = { ticks_per_second = 20 },
+              world = { map = "m.lua" },
             }
         )");
         CHECK_THROWS_WITH(ServerConfig::load_from_file(config.path()),
@@ -129,6 +148,7 @@ TEST_CASE("valores fora da faixa são rejeitados") {
             return {
               network = { port = 7777 },
               simulation = { ticks_per_second = 0 },
+              world = { map = "m.lua" },
             }
         )");
         CHECK_THROWS_WITH(ServerConfig::load_from_file(config.path()),

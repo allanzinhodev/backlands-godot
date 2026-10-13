@@ -77,4 +77,13 @@ std::vector<const Entity*> EntityRegistry::all() const {
     return result;
 }
 
+std::vector<Entity*> EntityRegistry::all_mutable() {
+    std::vector<Entity*> result;
+    result.reserve(entities_.size());
+    for (auto& [id, entity] : entities_) {
+        result.push_back(&entity);
+    }
+    return result;
+}
+
 } // namespace backlands::game

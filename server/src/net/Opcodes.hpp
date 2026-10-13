@@ -10,6 +10,7 @@ namespace backlands::net {
 enum class ClientOpcode : std::uint16_t {
     Ping = 0x0001,
     Login = 0x0002,
+    WalkTo = 0x0003,
 };
 
 enum class ServerOpcode : std::uint16_t {
@@ -18,6 +19,10 @@ enum class ServerOpcode : std::uint16_t {
     LoginFailed = 0x1003,
     EntitySpawn = 0x1004,
     EntityDespawn = 0x1005,
+    MapInfo = 0x1006,
+    MapRow = 0x1007,
+    EntityWalk = 0x1008,
+    EntityStop = 0x1009,
 };
 
 [[nodiscard]] constexpr std::uint16_t to_raw(ClientOpcode opcode) noexcept {

@@ -48,6 +48,10 @@ public:
     // Entidades já no mundo, para enviar ao jogador que acabou de entrar.
     [[nodiscard]] std::vector<const Entity*> all() const;
 
+    // Versão mutável, para os sistemas que avançam o estado (movimento hoje,
+    // combate e status effects depois).
+    [[nodiscard]] std::vector<Entity*> all_mutable();
+
 private:
     std::unordered_map<EntityId, Entity> entities_;
     std::unordered_map<std::uint32_t, EntityId> session_to_entity_;

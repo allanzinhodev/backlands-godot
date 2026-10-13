@@ -2,10 +2,12 @@
 
 #include "game/Entity.hpp"
 #include "game/EntityRegistry.hpp"
+#include "game/MapGrid.hpp"
 #include "net/Session.hpp"
 
 #include <cstddef>
 #include <cstdint>
+#include <string>
 #include <string_view>
 #include <unordered_map>
 #include <vector>
@@ -13,14 +15,15 @@
 namespace backlands::game {
 
 // Cola entre as entidades do mundo e as sessões de rede: decide quem recebe o
-// quê. A política de spawn em si mora em EntityRegistry, que não conhece rede.
+// quê. As políticas em si (spawn, pathfinding, movimento) moram nos módulos de
+// `core`, que não conhecem rede.
 //
 // Dono do estado é o thread único do io_context: sem locks por design.
 class World {
 public:
-    // Célula onde um jogador nasce. Fixa até o M4 trazer o grid do mapa.
-    static constexpr Cell kSpawnCell{16, 16};
-    static constexpr std::string_view kMapName = "starter_fields";
+    // Carrega o mapa. Lança se o arquivo estiver inconsistente — subir com
+    // mapa torto só apareceria depois, como jogador atravessando o rio.
+    void load_map(const std::string& lua_path);
 
     void add_session(const net::SessionPtr& session);
     void remove_session(net::SessionId id);
@@ -29,27 +32,40 @@ public:
     [[nodiscard]] std::size_t session_count() const noexcept { return sessions_.size(); }
 
     [[nodiscard]] EntityRegistry& entities() noexcept { return entities_; }
+    [[nodiscard]] const MapGrid& grid() const noexcept { return map_.grid; }
+    [[nodiscard]] std::string_view map_name() const noexcept { return map_.name; }
 
-    // Faz o jogador entrar no mundo: cria a entidade, manda o estado inicial a
-    // ele e anuncia aos demais. Em caso de recusa, o motivo já foi enviado ao
-    // client e é devolvido aqui para quem chama decidir se derruba a sessão.
+    // Faz o jogador entrar no mundo: cria a entidade, envia o mapa e o estado
+    // inicial a ele, e anuncia aos demais. Em caso de recusa, o motivo já foi
+    // enviado ao client e é devolvido aqui para quem chama decidir se derruba.
     EntityRegistry::SpawnError try_login(net::Session& session, std::string_view name);
 
-    // Envia o frame a todas as sessões, opcionalmente pulando uma (em geral a
-    // que originou a ação).
+    // Pedido de caminhada do client. Devolve false só em violação de protocolo
+    // (sessão sem entidade); destino inválido é recusa normal, não violação.
+    bool request_walk(net::Session& session, Cell destination);
+
+    // Envia o frame a todas as sessões, opcionalmente pulando uma.
     void broadcast(const std::vector<std::byte>& frame, net::SessionId except = 0);
 
-    // Chamado pelo GameLoop a cada tick. `delta_ms` é o passo fixo configurado.
+    // Chamado pelo GameLoop a cada tick, com o passo fixo configurado.
     void tick(std::uint32_t delta_ms);
 
     [[nodiscard]] std::uint64_t tick_count() const noexcept { return tick_count_; }
 
+    // Relógio lógico do mundo em ms. É ele, e não o relógio do sistema, que
+    // governa o movimento — o que mantém a simulação determinística.
+    [[nodiscard]] std::uint32_t now_ms() const noexcept { return world_time_ms_; }
+
 private:
+    void send_map(net::Session& session);
     void send_existing_entities(net::Session& session, EntityId skip_id);
+    void sweep_closed_sessions();
 
     std::unordered_map<net::SessionId, net::SessionPtr> sessions_;
     EntityRegistry entities_;
+    MapDefinition map_;
     std::uint64_t tick_count_ = 0;
+    std::uint32_t world_time_ms_ = 0;
 };
 
 } // namespace backlands::game

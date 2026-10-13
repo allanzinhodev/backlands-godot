@@ -11,12 +11,17 @@
 # --- Opcodes (espelham server/src/net/Opcodes.hpp) -------------------------
 $script:C_PING = 0x0001
 $script:C_LOGIN = 0x0002
+$script:C_WALK_TO = 0x0003
 
 $script:S_PONG = 0x1001
 $script:S_ENTER_WORLD = 0x1002
 $script:S_LOGIN_FAILED = 0x1003
 $script:S_ENTITY_SPAWN = 0x1004
 $script:S_ENTITY_DESPAWN = 0x1005
+$script:S_MAP_INFO = 0x1006
+$script:S_MAP_ROW = 0x1007
+$script:S_ENTITY_WALK = 0x1008
+$script:S_ENTITY_STOP = 0x1009
 
 # Motivos de S_LOGIN_FAILED (EntityRegistry::SpawnError).
 $script:LOGIN_FAIL_INVALID_NAME = 1
@@ -28,11 +33,16 @@ function Get-OpcodeName {
     switch ($Opcode) {
         0x0001 { 'C_PING' }
         0x0002 { 'C_LOGIN' }
+        0x0003 { 'C_WALK_TO' }
         0x1001 { 'S_PONG' }
         0x1002 { 'S_ENTER_WORLD' }
         0x1003 { 'S_LOGIN_FAILED' }
         0x1004 { 'S_ENTITY_SPAWN' }
         0x1005 { 'S_ENTITY_DESPAWN' }
+        0x1006 { 'S_MAP_INFO' }
+        0x1007 { 'S_MAP_ROW' }
+        0x1008 { 'S_ENTITY_WALK' }
+        0x1009 { 'S_ENTITY_STOP' }
         default { "0x$($Opcode.ToString('X4'))" }
     }
 }

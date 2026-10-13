@@ -81,6 +81,19 @@ void install_handlers(PacketDispatcher& dispatcher) {
         // client correto manda dois logins — então a sessão cai.
         return error != game::EntityRegistry::SpawnError::AlreadySpawned;
     });
+
+    // C_WALK_TO: o client manda apenas o DESTINO. Quem calcula e valida o
+    // caminho é o servidor, que então replica o trajeto a todos.
+    dispatcher.register_handler(ClientOpcode::WalkTo,
+                                [&world](Session& session, PacketReader& reader) {
+        const std::uint16_t x = reader.read_u16();
+        const std::uint16_t y = reader.read_u16();
+        if (reader.failed()) {
+            return false;
+        }
+
+        return world.request_walk(session, game::Cell{x, y});
+    });
 }
 
 } // namespace backlands::net
