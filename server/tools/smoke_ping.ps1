@@ -1,10 +1,14 @@
 ﻿<#
 .SYNOPSIS
-    Teste de fumaça do protocolo contra um backlands-server em execução.
+    Teste de fumaça do framing do protocolo contra um backlands-server em execução.
 
     Valida o caminho feliz (C_PING -> S_PONG) e, principalmente, que entrada
     hostil derruba a conexão em vez de ser processada: length inválido, opcode
     desconhecido, opcode de servidor vindo do client e payload truncado.
+
+    Cada caso hostil começa provando que a conexão está VIVA (um ping que
+    responde) antes de enviar o pacote ruim. Sem isso, um servidor morto
+    passaria o teste: toda conexão apareceria como "corretamente derrubada".
 
 .EXAMPLE
     .\smoke_ping.ps1
@@ -17,6 +21,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+. "$PSScriptRoot\protocol.ps1"
 
 $script:Failures = 0
 
@@ -31,46 +36,21 @@ function Write-Result {
     }
 }
 
-function Connect-Server {
-    $client = [System.Net.Sockets.TcpClient]::new()
-    $client.Connect($ServerHost, $Port)
-    $client.ReceiveTimeout = $TimeoutMs
-    $client.SendTimeout = $TimeoutMs
-    return $client
+function New-PingFrame {
+    param([uint32]$Nonce)
+    return New-Frame -Opcode $C_PING -Payload ([BitConverter]::GetBytes($Nonce))
 }
 
-# Monta um frame: uint16 opcode + uint16 length + payload, little-endian.
-# $Length permite forjar um header inconsistente de propósito.
-function New-Frame {
-    param([uint16]$Opcode, [byte[]]$Payload = @(), [Nullable[int]]$Length = $null)
-
-    $total = if ($null -ne $Length) { $Length } else { 4 + $Payload.Length }
-    $frame = [System.Collections.Generic.List[byte]]::new()
-    $frame.AddRange([BitConverter]::GetBytes($Opcode))
-    $frame.AddRange([BitConverter]::GetBytes([uint16]$total))
-    if ($Payload.Length -gt 0) { $frame.AddRange($Payload) }
-    return $frame.ToArray()
-}
-
-# Lê exatamente $Count bytes ou devolve $null se a conexão fechar antes.
-function Read-Exactly {
-    param([System.Net.Sockets.NetworkStream]$Stream, [int]$Count)
-
-    $buffer = [byte[]]::new($Count)
-    $offset = 0
-    while ($offset -lt $Count) {
-        try { $read = $Stream.Read($buffer, $offset, $Count - $offset) }
-        catch { return $null }
-        if ($read -le 0) { return $null }
-        $offset += $read
+# Faz um ping e confirma o eco. É a prova de vida da conexão.
+function Test-PingWorks {
+    param([System.Net.Sockets.NetworkStream]$Stream, [uint32]$Nonce)
+    try {
+        Send-Frame -Stream $Stream -Frame (New-PingFrame -Nonce $Nonce)
+        $frame = Read-FrameOfType -Stream $Stream -Opcode $S_PONG
+        if ($null -eq $frame) { return $false }
+        return [BitConverter]::ToUInt32($frame.Payload, 0) -eq $Nonce
     }
-    return $buffer
-}
-
-# Confirma que o servidor fechou a conexão (leitura devolve 0 / erro).
-function Test-Disconnected {
-    param([System.Net.Sockets.NetworkStream]$Stream)
-    return $null -eq (Read-Exactly -Stream $Stream -Count 1)
+    catch { return $false }
 }
 
 Write-Host "backlands-server smoke test -> ${ServerHost}:${Port}" -ForegroundColor Cyan
@@ -78,25 +58,21 @@ Write-Host "backlands-server smoke test -> ${ServerHost}:${Port}" -ForegroundCol
 # --- 1. Caminho feliz ------------------------------------------------------
 Write-Host "`nPING/PONG"
 try {
-    $client = Connect-Server
+    $client = Connect-BacklandsServer -ServerHost $ServerHost -Port $Port -TimeoutMs $TimeoutMs
     $stream = $client.GetStream()
 
     $nonce = [uint32]0x11223344
-    $stream.Write((New-Frame -Opcode 0x0001 -Payload ([BitConverter]::GetBytes($nonce))), 0, 8)
-    $stream.Flush()
+    Send-Frame -Stream $stream -Frame (New-PingFrame -Nonce $nonce)
 
-    $header = Read-Exactly -Stream $stream -Count 4
-    if ($null -eq $header) {
+    $frame = Read-Frame -Stream $stream
+    if ($null -eq $frame) {
         Write-Result $false 'servidor respondeu' '(conexão fechou)'
     }
     else {
-        $opcode = [BitConverter]::ToUInt16($header, 0)
-        $length = [BitConverter]::ToUInt16($header, 2)
-        Write-Result ($opcode -eq 0x1001) 'opcode é S_PONG (0x1001)' "(veio 0x$($opcode.ToString('X4')))"
-        Write-Result ($length -eq 8) 'length é 8 (header + nonce)' "(veio $length)"
-
-        $body = Read-Exactly -Stream $stream -Count ($length - 4)
-        $echo = [BitConverter]::ToUInt32($body, 0)
+        Write-Result ($frame.Opcode -eq $S_PONG) 'opcode é S_PONG (0x1001)' `
+            "(veio $(Get-OpcodeName $frame.Opcode))"
+        Write-Result ($frame.Length -eq 8) 'length é 8 (header + nonce)' "(veio $($frame.Length))"
+        $echo = [BitConverter]::ToUInt32($frame.Payload, 0)
         Write-Result ($echo -eq $nonce) 'nonce devolvido intacto' "(veio 0x$($echo.ToString('X8')))"
     }
 
@@ -104,11 +80,7 @@ try {
     # continua depois do primeiro pacote.
     $allOk = $true
     for ($i = 1; $i -le 5; $i++) {
-        $n = [uint32]$i
-        $stream.Write((New-Frame -Opcode 0x0001 -Payload ([BitConverter]::GetBytes($n))), 0, 8)
-        $stream.Flush()
-        $resp = Read-Exactly -Stream $stream -Count 8
-        if ($null -eq $resp -or [BitConverter]::ToUInt32($resp, 4) -ne $n) { $allOk = $false; break }
+        if (-not (Test-PingWorks -Stream $stream -Nonce ([uint32]$i))) { $allOk = $false; break }
     }
     Write-Result $allOk '5 pings sequenciais na mesma conexão'
 
@@ -119,46 +91,54 @@ catch {
 }
 
 # --- 2. Entrada hostil -----------------------------------------------------
-# Cada caso abre a própria conexão porque o esperado é justamente ser derrubado.
+# Cada caso abre a própria conexão, prova que ela está viva, e só então envia
+# o pacote ruim — o que torna a checagem capaz de distinguir "derrubado pelo
+# pacote" de "servidor já estava morto".
 Write-Host "`nRejeição de entrada inválida"
 
 $hostileCases = @(
-    @{ Name = 'length menor que o header (2)'; Frame = (New-Frame -Opcode 0x0001 -Length 2) }
-    @{ Name = 'length acima de kMaxPacketSize (9999)'; Frame = (New-Frame -Opcode 0x0001 -Length 9999) }
-    @{ Name = 'length zero'; Frame = (New-Frame -Opcode 0x0001 -Length 0) }
+    @{ Name = 'length menor que o header (2)'; Frame = (New-Frame -Opcode $C_PING -Length 2) }
+    @{ Name = 'length acima de kMaxPacketSize (9999)'; Frame = (New-Frame -Opcode $C_PING -Length 9999) }
+    @{ Name = 'length zero'; Frame = (New-Frame -Opcode $C_PING -Length 0) }
     @{ Name = 'opcode desconhecido (0xFFFF)'; Frame = (New-Frame -Opcode 0xFFFF) }
-    @{ Name = 'opcode de servidor vindo do client (0x1001)'; Frame = (New-Frame -Opcode 0x1001) }
-    @{ Name = 'C_PING sem payload'; Frame = (New-Frame -Opcode 0x0001) }
-    @{ Name = 'C_PING com payload truncado (2 de 4 bytes)'; Frame = (New-Frame -Opcode 0x0001 -Payload @(1, 2)) }
+    @{ Name = 'opcode de servidor vindo do client (0x1001)'; Frame = (New-Frame -Opcode $S_PONG) }
+    @{ Name = 'C_PING sem payload'; Frame = (New-Frame -Opcode $C_PING) }
+    @{ Name = 'C_PING com payload truncado (2 de 4 bytes)'; Frame = (New-Frame -Opcode $C_PING -Payload @(1, 2)) }
 )
 
 foreach ($case in $hostileCases) {
+    $alive = $false
+    $dropped = $false
     try {
-        $client = Connect-Server
+        $client = Connect-BacklandsServer -ServerHost $ServerHost -Port $Port -TimeoutMs $TimeoutMs
         $stream = $client.GetStream()
-        $stream.Write($case.Frame, 0, $case.Frame.Length)
-        $stream.Flush()
-        Write-Result (Test-Disconnected -Stream $stream) "derruba: $($case.Name)"
+
+        $alive = Test-PingWorks -Stream $stream -Nonce ([uint32]0x5A5A5A5A)
+        if ($alive) {
+            Send-Frame -Stream $stream -Frame $case.Frame
+            $dropped = Test-Disconnected -Stream $stream
+        }
         $client.Close()
     }
     catch {
-        # Exceção de socket também significa conexão derrubada: resultado correto.
-        Write-Result $true "derruba: $($case.Name)"
+        # Exceção de socket após o ping também significa derrubado.
+        if ($alive) { $dropped = $true }
+    }
+
+    if (-not $alive) {
+        Write-Result $false "derruba: $($case.Name)" '(conexão não estava viva antes do teste)'
+    }
+    else {
+        Write-Result $dropped "derruba: $($case.Name)"
     }
 }
 
 # --- 3. O servidor continua vivo depois dos abusos -------------------------
 Write-Host "`nServidor segue operacional"
 try {
-    $client = Connect-Server
+    $client = Connect-BacklandsServer -ServerHost $ServerHost -Port $Port -TimeoutMs $TimeoutMs
     $stream = $client.GetStream()
-    # Sufixo L: PowerShell leria 0xABCDEF01 como Int32 (negativo) e o cast
-    # para uint32 falharia.
-    $nonce = [uint32]0xABCDEF01L
-    $stream.Write((New-Frame -Opcode 0x0001 -Payload ([BitConverter]::GetBytes($nonce))), 0, 8)
-    $stream.Flush()
-    $resp = Read-Exactly -Stream $stream -Count 8
-    Write-Result ($null -ne $resp -and [BitConverter]::ToUInt32($resp, 4) -eq $nonce) `
+    Write-Result (Test-PingWorks -Stream $stream -Nonce ([uint32]0xABCDEF01L)) `
         'responde PING depois de 7 conexões derrubadas'
     $client.Close()
 }

@@ -76,10 +76,12 @@ void Session::read_body(std::uint16_t opcode, std::uint16_t length) {
     if (payload_size == 0) {
         body_buffer_.clear();
         if (!dispatcher_.dispatch(*this, opcode, {})) {
-            close("handler recusou o pacote");
+            // close_after_flush e não close: o handler pode ter enfileirado o
+            // motivo da recusa, e o client precisa recebê-lo antes do fim.
+            close_after_flush("handler recusou o pacote");
             return;
         }
-        if (!closed_) {
+        if (!closing()) {
             read_header();
         }
         return;
@@ -95,19 +97,23 @@ void Session::read_body(std::uint16_t opcode, std::uint16_t length) {
                 return;
             }
             if (!dispatcher_.dispatch(*this, opcode, body_buffer_)) {
-                close("handler recusou o pacote");
+                close_after_flush("handler recusou o pacote");
                 return;
             }
-            if (!closed_) {
+            if (!closing()) {
                 read_header();
             }
         });
 }
 
 void Session::send(std::vector<std::byte> frame) {
-    if (closed_ || frame.empty()) {
+    // Depois de decidir encerrar não aceitamos nova saída, mas o que já está
+    // na fila continua válido e será drenado.
+    if (closed_ || closing_ || frame.empty()) {
         return;
     }
+    // push_back num deque não invalida referências a elementos existentes,
+    // então enfileirar durante um async_write em voo é seguro.
     outgoing_.push_back(std::move(frame));
     // Só dispara na transição 0 -> 1; os demais encadeiam em write_next().
     if (!writing_) {
@@ -116,8 +122,12 @@ void Session::send(std::vector<std::byte> frame) {
 }
 
 void Session::write_next() {
-    if (outgoing_.empty()) {
+    if (closed_ || outgoing_.empty()) {
         writing_ = false;
+        // Fila drenou e já havíamos pedido o encerramento: fecha agora.
+        if (closing_ && !closed_) {
+            close(pending_close_reason_ != nullptr ? pending_close_reason_ : "encerrando");
+        }
         return;
     }
 
@@ -130,9 +140,23 @@ void Session::write_next() {
                               close("erro de escrita");
                               return;
                           }
+                          // Só agora o buffer do async_write pode ser liberado.
                           outgoing_.pop_front();
                           write_next();
                       });
+}
+
+void Session::close_after_flush(const char* reason) {
+    if (closed_ || closing_) {
+        return;
+    }
+    closing_ = true;
+    pending_close_reason_ = reason;
+
+    // Nada em voo nem na fila: não há o que esperar.
+    if (!writing_ && outgoing_.empty()) {
+        close(reason);
+    }
 }
 
 void Session::close(const char* reason) {
@@ -140,8 +164,11 @@ void Session::close(const char* reason) {
         return;
     }
     closed_ = true;
-    outgoing_.clear();
 
+    // outgoing_ NÃO é limpo aqui de propósito: se há um async_write em voo,
+    // ele aponta para o buffer da frente da fila, e destruí-lo agora é
+    // use-after-free. A fila morre junto com a Session, que o shared_ptr das
+    // continuações mantém viva até a última operação terminar.
     boost::system::error_code ec;
     socket_.shutdown(asio::ip::tcp::socket::shutdown_both, ec);
     socket_.close(ec);
