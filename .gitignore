@@ -13,6 +13,9 @@ server/vcpkg_installed/
 .vs/
 *.user
 
+# Editor
+.vscode/
+
 # OS
 Thumbs.db
 .DS_Store

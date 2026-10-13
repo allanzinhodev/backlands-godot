@@ -1,0 +1,52 @@
+# Emulador de referência (Cronus / Ragnarok-OldTimes) — apenas para estudo.
+# Uso: docker compose up --build
+#
+# MariaDB 10.6 (e não MySQL 8) porque o cliente da era eAthena não fala
+# caching_sha2_password e depende de tipos como `my_bool`.
+
+services:
+  db:
+    image: mariadb:10.6
+    container_name: backlands-db
+    # latin1 e não utf8mb4 (default da imagem): o schema de 2013 tem
+    # PRIMARY KEY sobre varchar(255) em MyISAM, cujo limite de chave é 1000
+    # bytes — 255 caracteres utf8mb4 ocupariam 1020 e o CREATE TABLE falha.
+    command: >
+      --character-set-server=latin1
+      --collation-server=latin1_swedish_ci
+    environment:
+      MARIADB_ROOT_PASSWORD: root
+      MARIADB_DATABASE: ragnarok
+      MARIADB_USER: ragnarok
+      MARIADB_PASSWORD: ragnarok
+    volumes:
+      - dbdata:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  backlands-server:
+    build:
+      context: .
+    image: backlands-server:latest
+    container_name: backlands-server
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "6900:6900"   # login
+      - "6121:6121"   # char
+      - "5121:5121"   # map
+    volumes:
+      # Fonte de verdade única: o entrypoint renderiza conf/import/*.txt a
+      # partir daqui, sem tocar na árvore original do emulador.
+      - ./config.lua:/opt/cronus/config.lua:ro
+    # Sem restart automático: se o boot falhar, o erro precisa ficar visível
+    # no log em vez de virar um loop de reinício.
+    restart: "no"
+
+volumes:
+  dbdata:

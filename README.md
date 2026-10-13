@@ -34,7 +34,12 @@ ctest --preset debug
 
 ```powershell
 cd tools/oldtimes-docker
-docker compose up --build
+docker compose up -d --build
+docker compose logs -f backlands-server
 ```
 
-Login 6900 / Char 6121 / Map 5121; MariaDB 10.6.
+Login 6900 / Char 6121 / Map 5121; MariaDB 10.6. Toda a configuração fica em um único
+[config.lua](tools/oldtimes-docker/config.lua) — o entrypoint renderiza de lá os arquivos
+`conf/import/*.txt` que o parser em C do emulador exige.
+
+Notas de build e o que estudar no fonte: [docs/oldtimes-notes.md](docs/oldtimes-notes.md).
