@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using Backlands.Art;
+using Backlands.Ui;
 using Backlands.Net;
 using Godot;
 
@@ -37,6 +38,7 @@ public sealed partial class Main : Node3D
     private Label _statusLabel = null!;
     private Control _loginPanel = null!;
     private Label _hudLabel = null!;
+    private SkillBar _skillBar = null!;
 
     // --- Modo de teste automatizado ---------------------------------------
     // Ligado por argumentos depois de `--` na linha de comando, para que o
@@ -48,12 +50,14 @@ public sealed partial class Main : Node3D
     //   --screenshot-delay=N   frames a esperar antes da captura
     //   --freeze-animations    congela a animação, para a captura ser comparável
     //   --sprite-preview=chave confere uma folha de sprites, sem servidor
+    //   --cast=N               aciona o slot N da barra ao entrar no mundo
     //   --attack-nearest       ataca o monstro mais próximo assim que o vir
     private string? _autoLoginName;
     private (int X, int Y)? _autoWalk;
     private string? _screenshotPath;
     private bool _autoAttackNearest;
     private string? _spritePreviewKey;
+    private int _autoCastSlot = -1;
     private int _screenshotDelayFrames = 180;
     private int _framesUntilScreenshot = -1;
 
@@ -118,6 +122,11 @@ public sealed partial class Main : Node3D
             else if (arg.StartsWith("--sprite-preview=", System.StringComparison.Ordinal))
             {
                 _spritePreviewKey = arg["--sprite-preview=".Length..];
+            }
+            else if (arg.StartsWith("--cast=", System.StringComparison.Ordinal)
+                     && int.TryParse(arg["--cast=".Length..], out var slot))
+            {
+                _autoCastSlot = slot;
             }
             else if (arg == "--freeze-animations")
             {
@@ -268,6 +277,10 @@ public sealed partial class Main : Node3D
         _statusLabel = new Label { Text = string.Empty, AutowrapMode = TextServer.AutowrapMode.WordSmart };
         column.AddChild(_statusLabel);
 
+        _skillBar = new SkillBar { Name = "SkillBar", Visible = false };
+        _skillBar.SlotTriggered += OnSkillTriggered;
+        layer.AddChild(_skillBar);
+
         _hudLabel = new Label
         {
             Name = "Hud",
@@ -366,6 +379,7 @@ public sealed partial class Main : Node3D
         _connectButton.Disabled = false;
         _loginPanel.Visible = true;
         _hudLabel.Visible = false;
+        _skillBar.Visible = false;
 
         foreach (var view in _views.Values)
         {
@@ -394,6 +408,7 @@ public sealed partial class Main : Node3D
         _loginPanel.Visible = false;
         _statusLabel.Text = string.Empty;
         _hudLabel.Visible = true;
+        _skillBar.Visible = true;
 
         AddView(entity, isLocal: true);
         CenterCameraOn(entity.CellX, entity.CellY);
@@ -407,6 +422,12 @@ public sealed partial class Main : Node3D
             GD.Print($"[teste] pedindo caminhada para ({_autoWalk.Value.X}, {_autoWalk.Value.Y})");
             _session.RequestWalk(_autoWalk.Value.X, _autoWalk.Value.Y);
         }
+        if (_autoCastSlot >= 1 && _autoCastSlot <= SkillBar.Slots.Length)
+        {
+            var index = _autoCastSlot - 1;
+            OnSkillTriggered(index, SkillBar.Slots[index]);
+        }
+
         if (_screenshotPath != null)
         {
             // Tempo para o mapa e os sprites desenharem e, num teste com vários
@@ -583,6 +604,34 @@ public sealed partial class Main : Node3D
         _hudLabel.Text = $"{world.MapName}  |  célula {cell}  |  HP {hp}  |  "
             + $"{world.Entities.Count} entidade(s)  |  clique no chão para andar, "
             + "no inimigo para atacar";
+    }
+
+    /// <summary>
+    /// Toca o efeito do slot na posição do personagem.
+    ///
+    /// É um banco de PROVA de arte: o efeito sai localmente, sem passar pelo
+    /// servidor. Quando as skills existirem, a tecla vira um pedido e o efeito
+    /// só toca quando o servidor confirmar — como já acontece com o ataque.
+    /// </summary>
+    private void OnSkillTriggered(int index, SkillSlot slot)
+    {
+        var local = _session.World.Local;
+        if (local == null || !_views.TryGetValue(local.Id, out var view))
+        {
+            return;
+        }
+
+        var effect = VfxLibrary.Load(slot.VfxId);
+        if (effect == null)
+        {
+            GD.Print($"[skills] F{index + 1} ({slot.Label}): efeito '{slot.VfxId}' indisponível");
+            return;
+        }
+
+        // Nasce na posição INTERPOLADA do personagem, não na célula: durante
+        // uma caminhada a célula já é o destino, e o efeito apareceria à frente.
+        AddChild(VfxPlayer.Create(effect, view.Position));
+        GD.Print($"[teste] F{index + 1} -> {slot.Label} ({slot.VfxId})");
     }
 
     // --- Entrada -----------------------------------------------------------

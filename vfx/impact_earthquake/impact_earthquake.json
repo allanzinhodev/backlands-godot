@@ -1,0 +1,18 @@
+{
+  "id": "impact_earthquake",
+  "title": "Earthquake",
+  "frame_width": 320,
+  "frame_height": 320,
+  "frames": 20,
+  "fps": 16,
+  "loop": false,
+  "tile_size": 64,
+  "pivot": [
+    176.0,
+    176.0
+  ],
+  "on_ground": false,
+  "layer": "full",
+  "variant": "earth",
+  "sheet": "impact_earthquake.png"
+}

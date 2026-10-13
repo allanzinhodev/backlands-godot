@@ -1,0 +1,18 @@
+{
+  "id": "circle_healing_spring",
+  "title": "Healing Spring",
+  "frame_width": 192,
+  "frame_height": 192,
+  "frames": 24,
+  "fps": 12,
+  "loop": true,
+  "tile_size": 64,
+  "pivot": [
+    96.0,
+    96.0
+  ],
+  "on_ground": true,
+  "layer": "ground",
+  "variant": "holy",
+  "sheet": "circle_healing_spring.png"
+}

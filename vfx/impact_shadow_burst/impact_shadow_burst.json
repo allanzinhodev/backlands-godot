@@ -1,0 +1,18 @@
+{
+  "id": "impact_shadow_burst",
+  "title": "Shadow Burst",
+  "frame_width": 192,
+  "frame_height": 192,
+  "frames": 14,
+  "fps": 16,
+  "loop": false,
+  "tile_size": 64,
+  "pivot": [
+    112.0,
+    112.0
+  ],
+  "on_ground": false,
+  "layer": "full",
+  "variant": "necrotic",
+  "sheet": "impact_shadow_burst.png"
+}
