@@ -5,6 +5,8 @@
 # Godot .NET
 .mono/
 *.csproj.user
+bin/
+obj/
 
 # C++ server (CMake / vcpkg / MSVC)
 server/build/
