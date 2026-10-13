@@ -1,0 +1,13 @@
+{
+  "$schema": "https://raw.githubusercontent.com/microsoft/vcpkg-tool/main/docs/vcpkg.schema.json",
+  "name": "backlands-server",
+  "version-string": "0.1.0",
+  "description": "Servidor autoritativo do Backlands (TCP binario, Boost.Asio, config em Lua)",
+  "builtin-baseline": "eb2d3a3279fd019cb7733072d86900d0ad2a1aef",
+  "dependencies": [
+    "boost-asio",
+    "lua",
+    "sol2",
+    "catch2"
+  ]
+}

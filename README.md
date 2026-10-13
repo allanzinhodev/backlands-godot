@@ -21,14 +21,25 @@ docs/                   GDD, protocolo, notas de estudo
 
 ## Build do server
 
-Requisitos: Visual Studio 2022 (MSVC), CMake, vcpkg (`VCPKG_ROOT` definido).
+Requisitos: Visual Studio com toolset C++ (MSVC), vcpkg com `VCPKG_ROOT` definido.
+O `build.ps1` resolve MSVC, CMake e Ninja do Visual Studio (que não ficam no PATH),
+configura, compila e roda os testes:
 
 ```powershell
 cd server
-cmake --preset debug
-cmake --build --preset debug
-ctest --preset debug
+.\build.ps1              # Debug + testes
+.\build.ps1 -Preset release
 ```
+
+Rodar o servidor e validar o protocolo de ponta a ponta:
+
+```powershell
+.\build\debug\backlands_server.exe
+.\tools\smoke_ping.ps1   # PING/PONG + rejeição de pacotes adulterados
+```
+
+Configuração em [server/config.lua](server/config.lua) (porta, taxa de tick), lida em
+tempo de execução — não exige recompilar.
 
 ## Emulador de referência
 
