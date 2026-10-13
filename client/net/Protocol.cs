@@ -16,6 +16,11 @@ public static class Protocol
 
     public const int MaxStringLength = 255;
 
+    /// Versão do contrato; precisa bater com kProtocolVersion no servidor.
+    /// Sem isto, um client desatualizado só descobriria o problema como
+    /// "payload truncado", que não diz nada a quem está jogando.
+    public const ushort Version = 2;
+
     /// Regras de nome aplicadas pelo servidor (server/src/game/Entity.hpp).
     /// Replicadas aqui só para dar erro na UI antes de gastar um round-trip —
     /// a validação que vale é a do servidor.
@@ -145,6 +150,7 @@ public enum LoginFailure : byte
     InvalidName = 1,
     NameInUse = 2,
     AlreadySpawned = 3,
+    ProtocolMismatch = 4,
 }
 
 public static class LoginFailureText
@@ -158,6 +164,8 @@ public static class LoginFailureText
             + "apenas letras, números e _",
         LoginFailure.NameInUse => "Esse nome já está em uso.",
         LoginFailure.AlreadySpawned => "Esta conexão já entrou no mundo.",
+        LoginFailure.ProtocolMismatch =>
+            "Versão do jogo incompatível com a do servidor. Atualize o client.",
         _ => $"Login recusado pelo servidor (motivo {(byte)reason}).",
     };
 }

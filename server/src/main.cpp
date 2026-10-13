@@ -42,6 +42,7 @@ int main(int argc, char** argv) {
         boost::asio::io_context io(1);
 
         game::World world;
+        world.set_player_sprite(config.player_sprite);
         world.load_map(config.map_path);
 
         net::PacketDispatcher dispatcher(world);

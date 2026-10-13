@@ -69,8 +69,21 @@ void install_handlers(PacketDispatcher& dispatcher) {
     // C_LOGIN -> S_ENTER_WORLD (+ S_ENTITY_SPAWN aos demais) ou S_LOGIN_FAILED.
     dispatcher.register_handler(ClientOpcode::Login,
                                 [&world](Session& session, PacketReader& reader) {
+        const std::uint16_t version = reader.read_u16();
         const std::string name = reader.read_string();
         if (reader.failed()) {
+            return false;
+        }
+
+        // Versão diferente é recusa explícita, não queda silenciosa: sem isto
+        // um client velho só descobriria o problema como "payload truncado",
+        // que não diz nada a quem está jogando.
+        if (version != kProtocolVersion) {
+            log::warn("sessão {}: protocolo {} != {}", session.id(), version, kProtocolVersion);
+            PacketWriter writer(to_raw(ServerOpcode::LoginFailed));
+            writer.write_u8(
+                static_cast<std::uint8_t>(game::EntityRegistry::SpawnError::ProtocolMismatch));
+            session.send(writer.finish());
             return false;
         }
 

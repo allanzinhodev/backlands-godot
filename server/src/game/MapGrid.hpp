@@ -96,6 +96,9 @@ private:
 struct MonsterTemplate {
     std::string species;
     std::string name;
+
+    // Folha de sprites. Vazio = usa a própria species como chave.
+    std::string sprite;
     std::int32_t max_hp = 50;
     std::int32_t attack_min = 7;
     std::int32_t attack_max = 10;

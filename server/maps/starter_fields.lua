@@ -1,4 +1,4 @@
--- Mapa inicial: campo aberto cortado por um rio, com uma ponte.
+﻿-- Mapa inicial: campo aberto cortado por um rio, com uma ponte.
 --
 -- O grid aqui é a FONTE DE VERDADE sobre passagem. O servidor valida todo
 -- movimento contra ele e envia o mesmo grid ao client, que apenas desenha —
@@ -72,6 +72,7 @@ return {
   monsters = {
     slime = {
       name = "Slime",
+      sprite = "Mog_Animist",   -- folha em spritesheets/
       max_hp = 50,
       attack_min = 7,
       attack_max = 10,
@@ -90,6 +91,7 @@ return {
 
     lobo = {
       name = "Lobo",
+      sprite = "Seeq_Viking",
       max_hp = 70,
       attack_min = 12,
       attack_max = 18,

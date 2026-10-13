@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using Backlands.Art;
 using Backlands.Net;
 using Godot;
 
@@ -45,11 +46,14 @@ public sealed partial class Main : Node3D
     //   --walk=x,y             pede uma caminhada após entrar no mundo
     //   --screenshot=caminho   salva um PNG da tela e encerra
     //   --screenshot-delay=N   frames a esperar antes da captura
+    //   --freeze-animations    congela a animação, para a captura ser comparável
+    //   --sprite-preview=chave confere uma folha de sprites, sem servidor
     //   --attack-nearest       ataca o monstro mais próximo assim que o vir
     private string? _autoLoginName;
     private (int X, int Y)? _autoWalk;
     private string? _screenshotPath;
     private bool _autoAttackNearest;
+    private string? _spritePreviewKey;
     private int _screenshotDelayFrames = 180;
     private int _framesUntilScreenshot = -1;
 
@@ -111,6 +115,14 @@ public sealed partial class Main : Node3D
             {
                 _screenshotPath = arg["--screenshot=".Length..];
             }
+            else if (arg.StartsWith("--sprite-preview=", System.StringComparison.Ordinal))
+            {
+                _spritePreviewKey = arg["--sprite-preview=".Length..];
+            }
+            else if (arg == "--freeze-animations")
+            {
+                EntityView.FreezeAnimations = true;
+            }
             else if (arg == "--map-preview")
             {
                 _mapPreview = true;
@@ -129,6 +141,12 @@ public sealed partial class Main : Node3D
         if (_mapPreview)
         {
             EnterMapPreview();
+            return;
+        }
+
+        if (_spritePreviewKey != null)
+        {
+            EnterSpritePreview(_spritePreviewKey);
             return;
         }
 
@@ -263,6 +281,48 @@ public sealed partial class Main : Node3D
         _nameField.TextSubmitted += _ => OnConnectPressed();
     }
 
+    /// Monta a cena de conferência de arte: nenhuma rede, câmera de frente,
+    /// e o resultado da checagem do mapeamento impresso no log.
+    private void EnterSpritePreview(string key)
+    {
+        _loginPanel.Visible = false;
+        _hudLabel.Visible = true;
+        _hudLabel.Text = $"pré-visualização da folha '{key}'";
+
+        _camera.Projection = Camera3D.ProjectionType.Orthogonal;
+        _camera.Size = 9.0f;
+        _camera.RotationDegrees = Vector3.Zero;
+        _camera.Position = new Vector3(0, 0, 12);
+
+        var preview = new SpritePreview(key) { Name = "SpritePreview" };
+        AddChild(preview);
+
+        // A tabela de direções é conferida contra a câmera REAL do jogo (e não
+        // a desta cena): mexer no ângulo da câmera muda quais direções são
+        // espelho de quais, e isso precisa aparecer como erro, não como arte
+        // sutilmente trocada.
+        var gameBasis = Basis.FromEuler(new Vector3(Mathf.DegToRad(CameraAngles.X),
+                                                    Mathf.DegToRad(CameraAngles.Y), 0.0f));
+        preview.Problems.AddRange(SpriteLayout.VerifyAgainstCamera(gameBasis));
+
+        if (preview.Problems.Count == 0)
+        {
+            GD.Print("[sprite] mapeamento de direções coerente com a câmera do jogo");
+        }
+        else
+        {
+            foreach (var problem in preview.Problems)
+            {
+                GD.PrintErr($"[sprite] {problem}");
+            }
+        }
+
+        if (_screenshotPath != null)
+        {
+            _framesUntilScreenshot = _screenshotDelayFrames;
+        }
+    }
+
     // --- Conexão -----------------------------------------------------------
 
     private void OnConnectPressed()
@@ -392,13 +452,21 @@ public sealed partial class Main : Node3D
     {
         if (_views.TryGetValue(entity.Id, out var view))
         {
-            view.SnapTo(entity.CellX, entity.CellY);
+            view.SnapTo(entity.CellX, entity.CellY, entity.Facing);
         }
         GD.Print($"[teste] entidade {entity.Id} parada em ({entity.CellX}, {entity.CellY})");
     }
 
-    private void OnEntityAttacked(RemoteEntity? source, RemoteEntity target, int damage)
+    private void OnEntityAttacked(RemoteEntity? source, RemoteEntity target, int damage,
+                                  int motionMs)
     {
+        // O atacante toca o golpe e já encara o alvo: a direção vem do pacote,
+        // não de um palpite do client.
+        if (source != null && _views.TryGetValue(source.Id, out var attackerView))
+        {
+            attackerView.PlayAttack(source.Facing, motionMs);
+        }
+
         if (_views.TryGetValue(target.Id, out var view))
         {
             view.UpdateHealth(target);
@@ -407,6 +475,9 @@ public sealed partial class Main : Node3D
             // para isso, então é aqui que a distinção aparece ao jogador.
             if (damage <= 0)
             {
+                // Dano 0 é erro de ataque: o servidor não manda pacote separado
+                // para isso, então é aqui que a distinção aparece ao jogador.
+                view.PlayEvade(motionMs);
                 view.ShowFloatingText("Miss", new Color(0.75f, 0.75f, 0.8f));
                 GD.Print($"[teste] {source?.Name ?? "?"} errou em {target.Name}");
             }
@@ -447,7 +518,7 @@ public sealed partial class Main : Node3D
         if (_views.TryGetValue(entity.Id, out var view))
         {
             view.SetDead(false);
-            view.SnapTo(entity.CellX, entity.CellY);
+            view.SnapTo(entity.CellX, entity.CellY, entity.Facing);
             view.UpdateHealth(entity);
         }
 
@@ -522,12 +593,6 @@ public sealed partial class Main : Node3D
         {
             return;
         }
-        if (_mapPreview)
-        {
-            EnterMapPreview();
-            return;
-        }
-
         if (_autoLoginName != null)
         {
             // Em execução automatizada o jogo ignora o mouse: a janela abre em

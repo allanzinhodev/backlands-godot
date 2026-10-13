@@ -40,6 +40,14 @@ struct CombatEvent {
     EntityId source = kNoEntity;
     EntityId target = kNoEntity;
 
+    // Posição e direção do ATACANTE no instante do golpe. Vão no pacote para
+    // o client parar de interpolar o trajeto abandonado: golpear limpa a
+    // caminhada no servidor sem emitir parada, e sem isto o atacante desliza
+    // pelo chão enquanto ataca.
+    Cell source_cell;
+    Direction source_facing = Direction::South;
+    std::uint16_t attack_motion_ms = 0;
+
     // 0 significa erro de ataque. Não há pacote separado para "miss": é o que
     // o Ragnarok faz, e o client mostra "Miss" ao ver dano zero.
     std::int32_t damage = 0;

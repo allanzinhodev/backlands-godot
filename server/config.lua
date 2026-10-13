@@ -18,5 +18,9 @@ return {
     -- O grid deste arquivo é a fonte de verdade sobre passagem, e é enviado
     -- ao client para que o visual não possa divergir da lógica.
     map = "maps/starter_fields.lua",
+
+    -- Folha de sprites dos jogadores: o nome do arquivo em spritesheets/ sem
+    -- a extensao. O servidor nao le a arte, so diz ao client qual usar.
+    player_sprite = "Vaan",
   },
 }

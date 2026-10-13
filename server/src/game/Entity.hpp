@@ -166,6 +166,11 @@ struct Entity {
     Stats stats;
     CombatState combat;
 
+    // Chave da folha de sprite no client. Vem da `species` do mapa para
+    // monstros; jogadores usam "player". É separado do nome de exibição de
+    // propósito: nome é texto do usuário e colidiria entre jogador e monstro.
+    std::string sprite = "player";
+
     // Só preenchido quando kind == Monster.
     MonsterBrain brain;
 

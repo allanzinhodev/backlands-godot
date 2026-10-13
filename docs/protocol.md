@@ -31,21 +31,21 @@ Direção dos opcodes: `C_*` = client→server (0x0001–0x0FFF), `S_*` = server
 | Opcode | Nome | Payload | Marco |
 |---|---|---|---|
 | 0x0001 | C_PING | `uint32 nonce` | M2 |
-| 0x0002 | C_LOGIN | `string nome` | M3 |
+| 0x0002 | C_LOGIN | `uint16 versao_protocolo`, `string nome` | M3/M6 |
 | 0x0003 | C_WALK_TO | `uint16 x`, `uint16 y` (célula destino) | M4 |
 | 0x0004 | C_ATTACK | `uint32 entity_id` (alvo) | M5 |
 | 0x1001 | S_PONG | `uint32 nonce` | M2 |
-| 0x1002 | S_ENTER_WORLD | `uint32 entity_id`, `uint16 x`, `uint16 y`, `uint8 dir`, `int32 hp`, `int32 hp_max`, `string mapa`, `string nome` | M3/M5 |
+| 0x1002 | S_ENTER_WORLD | `uint32 entity_id`, `uint16 x`, `uint16 y`, `uint8 dir`, `int32 hp`, `int32 hp_max`, `string sprite`, `string mapa`, `string nome` | M3/M5/M6 |
 | 0x1003 | S_LOGIN_FAILED | `uint8 motivo` | M3 |
-| 0x1004 | S_ENTITY_SPAWN | `uint32 entity_id`, `uint16 x`, `uint16 y`, `uint8 dir`, `uint8 tipo`, `int32 hp`, `int32 hp_max`, `string nome` | M3/M5 |
+| 0x1004 | S_ENTITY_SPAWN | `uint32 entity_id`, `uint16 x`, `uint16 y`, `uint8 dir`, `uint8 tipo`, `int32 hp`, `int32 hp_max`, `string sprite`, `string nome` | M3/M5/M6 |
 | 0x1005 | S_ENTITY_DESPAWN | `uint32 entity_id` | M3 |
 | 0x1006 | S_MAP_INFO | `uint16 largura`, `uint16 altura`, `string nome` | M4 |
 | 0x1007 | S_MAP_ROW | `uint16 y`, `uint16 n`, `uint8 células[n]` | M4 |
 | 0x1008 | S_ENTITY_WALK | `uint32 entity_id`, `uint16 x`, `uint16 y`, `uint16 ms_por_célula`, `uint8 n`, `uint8 direções[n]` | M4 |
 | 0x1009 | S_ENTITY_STOP | `uint32 entity_id`, `uint16 x`, `uint16 y`, `uint8 dir` | M4 |
-| 0x100A | S_ENTITY_ATTACK | `uint32 atacante`, `uint32 alvo`, `int32 dano`, `int32 hp_restante` | M5 |
-| 0x100B | S_ENTITY_DIED | `uint32 morto`, `uint32 matador` | M5 |
-| 0x100C | S_ENTITY_RESPAWN | `uint32 entity_id`, `uint16 x`, `uint16 y`, `int32 hp` | M5 |
+| 0x100A | S_ENTITY_ATTACK | `uint32 atacante`, `uint32 alvo`, `uint16 x`, `uint16 y`, `uint8 dir`, `uint16 motion_ms`, `int32 dano`, `int32 hp_restante` | M5/M6 |
+| 0x100B | S_ENTITY_DIED | `uint32 morto`, `uint32 matador`, `uint16 x`, `uint16 y` | M5/M6 |
+| 0x100C | S_ENTITY_RESPAWN | `uint32 entity_id`, `uint16 x`, `uint16 y`, `uint8 dir`, `int32 hp` | M5/M6 |
 | 0x100D | S_ATTACK_REJECTED | `uint8 motivo` | M5 |
 
 > Os marcos M6+ (skills) adicionam entradas aqui quando implementados.
@@ -70,6 +70,30 @@ Direção dos opcodes: `C_*` = client→server (0x0001–0x0FFF), `S_*` = server
 O servidor envia o grid inteiro ao client (`S_MAP_INFO` + uma `S_MAP_ROW` por linha). Isso
 elimina a classe de bug "visual divergir da lógica": só existe um grid, o do servidor. O client
 usa as flags apenas para desenhar e dar feedback de cursor — **nunca** para decidir passagem.
+
+### Versão do protocolo
+
+`C_LOGIN` abre com um `uint16` de versão (**hoje 2**), conferido contra `kProtocolVersion` em
+`server/src/net/Protocol.hpp`. Sem ele, um client desatualizado só descobriria o problema como
+"payload truncado", que não diz nada a quem está jogando. A versão sobe a cada mudança
+incompatível de pacote.
+
+### A direção é sempre do servidor
+
+Nenhum pacote novo foi criado para isso: a direção viaja nos pacotes que já correspondem a uma
+mudança real de direção.
+
+`S_ENTITY_ATTACK` leva a posição e a direção do atacante — e vale como **parada implícita**,
+porque golpear limpa a caminhada no servidor sem emitir `S_ENTITY_STOP`; sem essa correção o
+atacante continuaria deslizando pelo chão enquanto ataca. `S_ENTITY_DIED` leva a célula onde o
+corpo caiu, pelo mesmo motivo. Durante a caminhada, a direção de cada passo já está implícita
+no caminho que `S_ENTITY_WALK` envia.
+
+### Chave de sprite
+
+`S_ENTER_WORLD` e `S_ENTITY_SPAWN` levam um `string sprite`: a `species` do mapa Lua para
+monstros, `player` para jogadores. O nome de exibição não serve para isso — é texto do usuário
+e colidiria entre jogador e monstro. Ver [spritesheets.md](spritesheets.md).
 
 ### Direções
 
@@ -137,6 +161,7 @@ um atraso do loop não vire um teleporte.
 | 1 | Nome inválido (fora de 3–16 caracteres, ou fora de `[A-Za-z0-9_]`) | mantida |
 | 2 | Nome em uso | mantida |
 | 3 | A sessão já está no mundo | **derrubada** |
+| 4 | Versão de protocolo diferente | **derrubada** |
 
 Nome inválido e nome em uso são erro de usuário: a conexão continua aberta para ele tentar
 outro nome sem reconectar. Login duplicado é erro de protocolo — nenhum client correto manda
