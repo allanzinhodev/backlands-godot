@@ -183,6 +183,28 @@ TEST_CASE("alvo que morre é largado") {
     CHECK(den.at(den.monster).combat.target == kNoEntity);
 }
 
+TEST_CASE("o rancor não sobrevive à morte do monstro") {
+    Den den;
+    auto& monster = den.spawn(Cell{20, 20}, /*view_range=*/0);
+    const auto player = den.add_player(1, Cell{21, 20});
+
+    monster.brain.retaliate_against = player;
+    std::uint32_t now = 0;
+    den.think(now);
+    REQUIRE(den.at(den.monster).combat.target == player);
+
+    // Morre e "renasce" como o World faz: vida cheia, alvo e rancor zerados.
+    // Sem zerar o rancor, um passivo volta atacando quem o matou antes, sem
+    // ter sido provocado de novo.
+    auto& m = den.at(den.monster);
+    m.stats.hp = m.stats.max_hp;
+    m.combat.clear_target();
+    m.brain.retaliate_against = kNoEntity;
+
+    den.think(now);
+    CHECK(den.at(den.monster).combat.target == kNoEntity);
+}
+
 TEST_CASE("monstro morto não pensa") {
     Den den;
     auto& monster = den.spawn(Cell{20, 20}, /*view_range=*/9);

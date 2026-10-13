@@ -33,17 +33,31 @@ Direção dos opcodes: `C_*` = client→server (0x0001–0x0FFF), `S_*` = server
 | 0x0001 | C_PING | `uint32 nonce` | M2 |
 | 0x0002 | C_LOGIN | `string nome` | M3 |
 | 0x0003 | C_WALK_TO | `uint16 x`, `uint16 y` (célula destino) | M4 |
+| 0x0004 | C_ATTACK | `uint32 entity_id` (alvo) | M5 |
 | 0x1001 | S_PONG | `uint32 nonce` | M2 |
-| 0x1002 | S_ENTER_WORLD | `uint32 entity_id`, `uint16 x`, `uint16 y`, `uint8 dir`, `string mapa`, `string nome` | M3 |
+| 0x1002 | S_ENTER_WORLD | `uint32 entity_id`, `uint16 x`, `uint16 y`, `uint8 dir`, `int32 hp`, `int32 hp_max`, `string mapa`, `string nome` | M3/M5 |
 | 0x1003 | S_LOGIN_FAILED | `uint8 motivo` | M3 |
-| 0x1004 | S_ENTITY_SPAWN | `uint32 entity_id`, `uint16 x`, `uint16 y`, `uint8 dir`, `string nome` | M3 |
+| 0x1004 | S_ENTITY_SPAWN | `uint32 entity_id`, `uint16 x`, `uint16 y`, `uint8 dir`, `uint8 tipo`, `int32 hp`, `int32 hp_max`, `string nome` | M3/M5 |
 | 0x1005 | S_ENTITY_DESPAWN | `uint32 entity_id` | M3 |
 | 0x1006 | S_MAP_INFO | `uint16 largura`, `uint16 altura`, `string nome` | M4 |
 | 0x1007 | S_MAP_ROW | `uint16 y`, `uint16 n`, `uint8 células[n]` | M4 |
 | 0x1008 | S_ENTITY_WALK | `uint32 entity_id`, `uint16 x`, `uint16 y`, `uint16 ms_por_célula`, `uint8 n`, `uint8 direções[n]` | M4 |
 | 0x1009 | S_ENTITY_STOP | `uint32 entity_id`, `uint16 x`, `uint16 y`, `uint8 dir` | M4 |
+| 0x100A | S_ENTITY_ATTACK | `uint32 atacante`, `uint32 alvo`, `int32 dano`, `int32 hp_restante` | M5 |
+| 0x100B | S_ENTITY_DIED | `uint32 morto`, `uint32 matador` | M5 |
+| 0x100C | S_ENTITY_RESPAWN | `uint32 entity_id`, `uint16 x`, `uint16 y`, `int32 hp` | M5 |
+| 0x100D | S_ATTACK_REJECTED | `uint8 motivo` | M5 |
 
-> Os marcos M5+ (combate, skills) adicionam entradas aqui quando implementados.
+> Os marcos M6+ (skills) adicionam entradas aqui quando implementados.
+
+### Tipo de entidade
+
+`0` jogador, `1` monstro.
+
+### Motivos de S_ATTACK_REJECTED
+
+`1` alvo inexistente, `2` alvo morto, `3` atacante morto, `4` alvo é você mesmo,
+`5` fora de alcance, `6` ainda em cooldown.
 
 ### Células do mapa (um byte por célula)
 
@@ -79,6 +93,30 @@ Client                              Servidor
   |<----------- S_ENTITY_STOP ------|  se o caminho foi bloqueado no meio,
   |                                 |  ou se o destino foi recusado
 ```
+
+## Fluxo de combate (M5)
+
+```text
+Client                              Servidor
+  |-- C_ATTACK(entity_id) --------->|  seleciona o ALVO
+  |                                 |  (o golpe sai no tick, não aqui)
+  |                                 |
+  |                                 |  a cada tick, se o alvo está no alcance
+  |                                 |  e o cooldown venceu:
+  |                                 |    acerto = 80 + hit - flee  [5, 100]
+  |                                 |    dano  = faixa -> defesa % -> defesa plana
+  |<----------- S_ENTITY_ATTACK ----|  dano 0 = errou
+  |<----------- S_ENTITY_DIED ------|  se o alvo chegou a 0 de HP
+  |<----------- S_ENTITY_RESPAWN ---|  depois do tempo de respawn
+```
+
+O ataque é **contínuo**: o client escolhe o alvo uma vez e o servidor repete o golpe
+enquanto o alvo for válido. Fora de alcance o atacante **persegue**, em vez de recusar.
+O cooldown vive no servidor — é ele que impede um client modificado de bater a cada pacote.
+
+Um golpe que erra manda `S_ENTITY_ATTACK` com dano **0**, sem pacote próprio, que é o que o
+Ragnarok faz. O HP restante vai no pacote em vez de o client subtrair: se um pacote se
+perdesse, uma barra calculada por subtração ficaria errada para sempre.
 
 O client envia **apenas o destino**, nunca passos nem posição. O trajeto vai em um único
 pacote, como no Ragnarok: o client interpola as mesmas células que o servidor vai percorrer,

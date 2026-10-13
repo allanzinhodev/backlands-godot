@@ -24,6 +24,7 @@ public sealed partial class Main : Node3D
 
     private readonly Dictionary<uint, EntityView> _views = new();
 
+    private uint _targetId;
     private GameSession _session = null!;
     private MapRenderer _mapRenderer = null!;
     private Camera3D _camera = null!;
@@ -44,9 +45,11 @@ public sealed partial class Main : Node3D
     //   --walk=x,y             pede uma caminhada após entrar no mundo
     //   --screenshot=caminho   salva um PNG da tela e encerra
     //   --screenshot-delay=N   frames a esperar antes da captura
+    //   --attack-nearest       ataca o monstro mais próximo assim que o vir
     private string? _autoLoginName;
     private (int X, int Y)? _autoWalk;
     private string? _screenshotPath;
+    private bool _autoAttackNearest;
     private int _screenshotDelayFrames = 180;
     private int _framesUntilScreenshot = -1;
 
@@ -72,6 +75,10 @@ public sealed partial class Main : Node3D
         world.EntityWalkStarted += OnEntityWalk;
         world.EntityStopped += OnEntityStopped;
         world.LoginRejected += OnLoginRejected;
+        world.EntityAttacked += OnEntityAttacked;
+        world.EntityDied += OnEntityDied;
+        world.EntityRespawned += OnEntityRespawned;
+        world.AttackRejected += OnAttackRejected;
 
         _session.Disconnected += OnDisconnected;
         _session.ConnectionFailed += OnConnectionFailed;
@@ -103,6 +110,10 @@ public sealed partial class Main : Node3D
             else if (arg.StartsWith("--screenshot=", System.StringComparison.Ordinal))
             {
                 _screenshotPath = arg["--screenshot=".Length..];
+            }
+            else if (arg == "--attack-nearest")
+            {
+                _autoAttackNearest = true;
             }
             else if (arg.StartsWith("--screenshot-delay=", System.StringComparison.Ordinal)
                      && int.TryParse(arg["--screenshot-delay=".Length..], out var frames))
@@ -311,6 +322,14 @@ public sealed partial class Main : Node3D
     {
         AddView(entity, isLocal: entity.Id == _session.World.LocalEntityId);
         UpdateHud();
+
+        if (_autoAttackNearest && entity.Kind == EntityKind.Monster && _targetId == 0)
+        {
+            _targetId = entity.Id;
+            GD.Print($"[teste] atacando '{entity.Name}' (entidade {entity.Id}) "
+                + $"em ({entity.CellX}, {entity.CellY})");
+            _session.RequestAttack(entity.Id);
+        }
     }
 
     private void OnEntityDespawned(RemoteEntity entity)
@@ -341,6 +360,91 @@ public sealed partial class Main : Node3D
         GD.Print($"[teste] entidade {entity.Id} parada em ({entity.CellX}, {entity.CellY})");
     }
 
+    private void OnEntityAttacked(RemoteEntity? source, RemoteEntity target, int damage)
+    {
+        if (_views.TryGetValue(target.Id, out var view))
+        {
+            view.UpdateHealth(target);
+
+            // Dano 0 é erro de ataque: o servidor não manda pacote separado
+            // para isso, então é aqui que a distinção aparece ao jogador.
+            if (damage <= 0)
+            {
+                view.ShowFloatingText("Miss", new Color(0.75f, 0.75f, 0.8f));
+                GD.Print($"[teste] {source?.Name ?? "?"} errou em {target.Name}");
+            }
+            else
+            {
+                var hurtMe = target.Id == _session.World.LocalEntityId;
+                view.ShowFloatingText(damage.ToString(),
+                                      hurtMe ? new Color(1.0f, 0.4f, 0.35f)
+                                             : new Color(1.0f, 0.92f, 0.45f));
+                GD.Print($"[teste] {source?.Name ?? "?"} causou {damage} em {target.Name} "
+                    + $"(HP {target.Hp}/{target.MaxHp})");
+            }
+        }
+    }
+
+    private void OnEntityDied(RemoteEntity dead, RemoteEntity? killer)
+    {
+        if (_views.TryGetValue(dead.Id, out var view))
+        {
+            view.UpdateHealth(dead);
+            view.SetDead(true);
+        }
+
+        if (dead.Id == _session.World.LocalEntityId)
+        {
+            _statusLabel.Text = "Você morreu. Renascendo...";
+            _statusLabel.Visible = true;
+        }
+        if (dead.Id == _targetId)
+        {
+            _targetId = 0;
+        }
+        GD.Print($"[teste] {dead.Name} morreu (morto por {killer?.Name ?? "?"})");
+    }
+
+    private void OnEntityRespawned(RemoteEntity entity)
+    {
+        if (_views.TryGetValue(entity.Id, out var view))
+        {
+            view.SetDead(false);
+            view.SnapTo(entity.CellX, entity.CellY);
+            view.UpdateHealth(entity);
+        }
+
+        if (entity.Id == _session.World.LocalEntityId)
+        {
+            _statusLabel.Text = string.Empty;
+            _statusLabel.Visible = false;
+        }
+        GD.Print($"[teste] {entity.Name} renasceu em ({entity.CellX}, {entity.CellY})");
+    }
+
+    private void OnAttackRejected(AttackRejection reason)
+    {
+        GD.Print($"[teste] ataque recusado: {AttackRejectionText.Describe(reason)}");
+    }
+
+    /// Entidade viva ocupando a célula, ou 0. Ignora a própria entidade:
+    /// clicar em si mesmo deve andar, não atacar.
+    private uint FindEntityAtCell(int cellX, int cellY)
+    {
+        foreach (var (id, entity) in _session.World.Entities)
+        {
+            if (id == _session.World.LocalEntityId || !entity.Alive)
+            {
+                continue;
+            }
+            if (entity.CellX == cellX && entity.CellY == cellY)
+            {
+                return id;
+            }
+        }
+        return 0;
+    }
+
     private void AddView(RemoteEntity entity, bool isLocal)
     {
         if (_views.ContainsKey(entity.Id))
@@ -367,8 +471,10 @@ public sealed partial class Main : Node3D
             cell = $"({x}, {y})";
         }
 
-        _hudLabel.Text = $"{world.MapName}  |  célula {cell}  |  "
-            + $"{world.Entities.Count} entidade(s)  |  clique para andar";
+        var hp = local == null ? "-" : $"{local.Hp}/{local.MaxHp}";
+        _hudLabel.Text = $"{world.MapName}  |  célula {cell}  |  HP {hp}  |  "
+            + $"{world.Entities.Count} entidade(s)  |  clique no chão para andar, "
+            + "no inimigo para atacar";
     }
 
     // --- Entrada -----------------------------------------------------------
@@ -394,6 +500,17 @@ public sealed partial class Main : Node3D
         var cell = ScreenToCell(click.Position);
         if (cell == null)
         {
+            return;
+        }
+
+        // Clicar em cima de outra entidade seleciona alvo; no chão, anda.
+        // Compara por CÉLULA e não por pixel: é a mesma unidade em que o
+        // servidor decide alcance, então o que o jogador clica é o que o
+        // servidor vê.
+        var targetId = FindEntityAtCell(cell.Value.X, cell.Value.Y);
+        if (targetId != 0)
+        {
+            _session.RequestAttack(targetId);
             return;
         }
 

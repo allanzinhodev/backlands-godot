@@ -482,6 +482,13 @@ void World::advance_respawns() {
         entity->walk.clear();
         entity->combat.clear_target();
 
+        if (entity->is_monster()) {
+            // Zera o rancor: sem isto um monstro passivo renasce já atacando
+            // quem o matou antes, sem ter sido provocado de novo.
+            entity->brain.retaliate_against = kNoEntity;
+            entity->brain.next_wander_at_ms = world_time_ms_ + kIdleWanderIntervalMs;
+        }
+
         broadcast(make_respawn_frame(*entity));
         log::info("entidade {} ('{}') renasceu em ({}, {})", entity->id, entity->name,
                   entity->cell.x, entity->cell.y);

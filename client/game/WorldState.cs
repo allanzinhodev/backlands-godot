@@ -8,18 +8,34 @@ namespace Backlands.Game;
 /// o client só guarda o que recebeu.
 public sealed class RemoteEntity
 {
-    public RemoteEntity(uint id, string name, int cellX, int cellY, Direction facing)
+    public RemoteEntity(uint id, string name, int cellX, int cellY, Direction facing,
+                        EntityKind kind, int hp, int maxHp)
     {
         Id = id;
         Name = name;
         CellX = cellX;
         CellY = cellY;
         Facing = facing;
+        Kind = kind;
+        Hp = hp;
+        MaxHp = maxHp;
     }
 
     public uint Id { get; }
 
     public string Name { get; }
+
+    public EntityKind Kind { get; }
+
+    public int Hp { get; internal set; }
+
+    public int MaxHp { get; internal set; }
+
+    public bool Alive => Hp > 0;
+
+    /// Fração de vida em [0, 1], para a barra. MaxHp zero nunca deveria vir do
+    /// servidor, mas dividir por ele travaria o client.
+    public float HpFraction => MaxHp <= 0 ? 0.0f : System.Math.Clamp((float)Hp / MaxHp, 0f, 1f);
 
     /// Célula autoritativa: onde o servidor diz que a entidade está. A posição
     /// visual interpolada vive no nó da cena, não aqui.
@@ -115,6 +131,15 @@ public sealed class WorldState
     /// A entidade parou aqui — caminho bloqueado ou destino recusado.
     public event Action<RemoteEntity>? EntityStopped;
 
+    /// Alguém bateu em alguém. Dano 0 significa que o golpe errou.
+    public event Action<RemoteEntity?, RemoteEntity, int>? EntityAttacked;
+
+    public event Action<RemoteEntity, RemoteEntity?>? EntityDied;
+
+    public event Action<RemoteEntity>? EntityRespawned;
+
+    public event Action<AttackRejection>? AttackRejected;
+
     public RemoteEntity? Find(uint id) => _entities.TryGetValue(id, out var entity) ? entity : null;
 
     public RemoteEntity? Local => LocalEntityId == 0 ? null : Find(LocalEntityId);
@@ -171,6 +196,8 @@ public sealed class WorldState
         var x = reader.ReadU16();
         var y = reader.ReadU16();
         var facing = reader.ReadU8();
+        var hp = reader.ReadI32();
+        var maxHp = reader.ReadI32();
         var map = reader.ReadString();
         var name = reader.ReadString();
 
@@ -183,7 +210,8 @@ public sealed class WorldState
         LocalEntityId = id;
         MapName = map;
 
-        var entity = new RemoteEntity(id, name, x, y, (Direction)facing);
+        var entity = new RemoteEntity(id, name, x, y, (Direction)facing, EntityKind.Player, hp,
+                                      maxHp);
         _entities[id] = entity;
 
         EnteredWorld?.Invoke(entity);
@@ -197,9 +225,13 @@ public sealed class WorldState
         var x = reader.ReadU16();
         var y = reader.ReadU16();
         var facing = reader.ReadU8();
+        var kind = reader.ReadU8();
+        var hp = reader.ReadI32();
+        var maxHp = reader.ReadI32();
         var name = reader.ReadString();
 
-        if (reader.Failed || id == 0 || facing > (byte)Direction.SouthEast)
+        if (reader.Failed || id == 0 || facing > (byte)Direction.SouthEast
+            || kind > (byte)EntityKind.Monster)
         {
             return false;
         }
@@ -211,11 +243,14 @@ public sealed class WorldState
             existing.CellX = x;
             existing.CellY = y;
             existing.Facing = (Direction)facing;
+            existing.Hp = hp;
+            existing.MaxHp = maxHp;
             EntityStopped?.Invoke(existing);
             return true;
         }
 
-        var entity = new RemoteEntity(id, name, x, y, (Direction)facing);
+        var entity = new RemoteEntity(id, name, x, y, (Direction)facing, (EntityKind)kind, hp,
+                                      maxHp);
         _entities[id] = entity;
         EntitySpawned?.Invoke(entity);
         return true;
@@ -325,6 +360,92 @@ public sealed class WorldState
         entity.CellY = y;
         entity.Facing = (Direction)facing;
         EntityStopped?.Invoke(entity);
+        return true;
+    }
+
+    /// S_ENTITY_ATTACK: u32 atacante, u32 alvo, i32 dano, i32 vida restante.
+    public bool HandleEntityAttack(ref PacketReader reader)
+    {
+        var sourceId = reader.ReadU32();
+        var targetId = reader.ReadU32();
+        var damage = reader.ReadI32();
+        var hp = reader.ReadI32();
+
+        if (reader.Failed)
+        {
+            return false;
+        }
+
+        if (!_entities.TryGetValue(targetId, out var target))
+        {
+            return true; // alvo que nunca chegamos a ver
+        }
+
+        // A vida vem no pacote em vez de ser acumulada aqui: se um pacote de
+        // dano se perdesse, uma barra calculada por subtração ficaria errada
+        // para sempre.
+        target.Hp = hp;
+
+        _entities.TryGetValue(sourceId, out var source);
+        EntityAttacked?.Invoke(source, target, damage);
+        return true;
+    }
+
+    /// S_ENTITY_DIED: u32 morto, u32 matador.
+    public bool HandleEntityDied(ref PacketReader reader)
+    {
+        var deadId = reader.ReadU32();
+        var killerId = reader.ReadU32();
+        if (reader.Failed)
+        {
+            return false;
+        }
+
+        if (!_entities.TryGetValue(deadId, out var dead))
+        {
+            return true;
+        }
+
+        dead.Hp = 0;
+        _entities.TryGetValue(killerId, out var killer);
+        EntityDied?.Invoke(dead, killer);
+        return true;
+    }
+
+    /// S_ENTITY_RESPAWN: u32 id, u16 x, u16 y, i32 vida.
+    public bool HandleEntityRespawn(ref PacketReader reader)
+    {
+        var id = reader.ReadU32();
+        var x = reader.ReadU16();
+        var y = reader.ReadU16();
+        var hp = reader.ReadI32();
+
+        if (reader.Failed)
+        {
+            return false;
+        }
+
+        if (!_entities.TryGetValue(id, out var entity))
+        {
+            return true;
+        }
+
+        entity.CellX = x;
+        entity.CellY = y;
+        entity.Hp = hp;
+        EntityRespawned?.Invoke(entity);
+        return true;
+    }
+
+    /// S_ATTACK_REJECTED: u8 motivo.
+    public bool HandleAttackRejected(ref PacketReader reader)
+    {
+        var reason = reader.ReadU8();
+        if (reader.Failed)
+        {
+            return false;
+        }
+        AttackRejected?.Invoke((AttackRejection)reason);
         return true;
     }
 

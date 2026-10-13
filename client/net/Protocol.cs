@@ -47,6 +47,7 @@ public enum ClientOpcode : ushort
     Ping = 0x0001,
     Login = 0x0002,
     WalkTo = 0x0003,
+    Attack = 0x0004,
 }
 
 /// Server -> client (0x1001-0x1FFF).
@@ -61,6 +62,43 @@ public enum ServerOpcode : ushort
     MapRow = 0x1007,
     EntityWalk = 0x1008,
     EntityStop = 0x1009,
+    EntityAttack = 0x100A,
+    EntityDied = 0x100B,
+    EntityRespawn = 0x100C,
+    AttackRejected = 0x100D,
+}
+
+/// Tipo de uma entidade.
+public enum EntityKind : byte
+{
+    Player = 0,
+    Monster = 1,
+}
+
+/// Por que o servidor recusou um pedido de ataque.
+public enum AttackRejection : byte
+{
+    None = 0,
+    NoSuchTarget = 1,
+    TargetDead = 2,
+    AttackerDead = 3,
+    SelfTarget = 4,
+    OutOfRange = 5,
+    OnCooldown = 6,
+}
+
+public static class AttackRejectionText
+{
+    public static string Describe(AttackRejection reason) => reason switch
+    {
+        AttackRejection.NoSuchTarget => "Esse alvo não existe mais.",
+        AttackRejection.TargetDead => "O alvo já está morto.",
+        AttackRejection.AttackerDead => "Você está morto.",
+        AttackRejection.SelfTarget => "Você não pode atacar a si mesmo.",
+        AttackRejection.OutOfRange => "Alvo fora de alcance.",
+        AttackRejection.OnCooldown => "Ainda se recuperando do golpe anterior.",
+        _ => $"Ataque recusado (motivo {(byte)reason}).",
+    };
 }
 
 /// Tipo de terreno de uma célula, nos bits altos do byte do grid.

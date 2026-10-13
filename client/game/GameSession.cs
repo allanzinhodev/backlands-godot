@@ -41,6 +41,10 @@ public sealed partial class GameSession : Node
         _client.RegisterHandler(ServerOpcode.MapRow, World.HandleMapRow);
         _client.RegisterHandler(ServerOpcode.EntityWalk, World.HandleEntityWalk);
         _client.RegisterHandler(ServerOpcode.EntityStop, World.HandleEntityStop);
+        _client.RegisterHandler(ServerOpcode.EntityAttack, World.HandleEntityAttack);
+        _client.RegisterHandler(ServerOpcode.EntityDied, World.HandleEntityDied);
+        _client.RegisterHandler(ServerOpcode.EntityRespawn, World.HandleEntityRespawn);
+        _client.RegisterHandler(ServerOpcode.AttackRejected, World.HandleAttackRejected);
         _client.RegisterHandler(ServerOpcode.Pong, HandlePong);
 
         _client.Connected += OnConnected;
@@ -77,6 +81,15 @@ public sealed partial class GameSession : Node
         var writer = new PacketWriter(ClientOpcode.WalkTo);
         writer.WriteU16((ushort)cellX);
         writer.WriteU16((ushort)cellY);
+        _client.Send(writer);
+    }
+
+    /// Escolhe um alvo. O golpe em si sai no servidor, quando o alcance e o
+    /// cooldown permitirem — o client não decide se bate nem quanto tira.
+    public void RequestAttack(uint targetId)
+    {
+        var writer = new PacketWriter(ClientOpcode.Attack);
+        writer.WriteU32(targetId);
         _client.Send(writer);
     }
 
