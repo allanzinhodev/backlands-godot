@@ -1,6 +1,7 @@
+using Backlands.Art;
 using Godot;
 
-namespace Backlands.Art;
+namespace Backlands.Scene;
 
 /// <summary>
 /// Toca um efeito visual em um ponto do mundo e se remove sozinho ao terminar.
@@ -35,6 +36,17 @@ public sealed partial class VfxPlayer : Node3D
     private Vector3 _anchor;
 
     private bool _onGround;
+
+    /// Se o efeito existe e carrega. A carga fica no cache, então conferir
+    /// antes e tocar depois não lê o arquivo duas vezes.
+    public static bool IsAvailable(string effectId) => VfxLibrary.Load(effectId) != null;
+
+    /// Monta o nó do efeito pela chave, ou null se ele não carregou.
+    public static VfxPlayer? CreateById(string effectId, Vector3 position)
+    {
+        var effect = VfxLibrary.Load(effectId);
+        return effect == null ? null : Create(effect, position);
+    }
 
     /// Monta o nó do efeito. Quem chama adiciona à cena; o tempo de vida só
     /// começa a contar quando ele entra na árvore.
@@ -112,7 +124,7 @@ public sealed partial class VfxPlayer : Node3D
         // nada sobre tamanho nem posição. Sem isto, o quadro fotografado
         // dependia de quanto a máquina demorou para compilar shader na
         // partida, e duas execuções nunca comparavam a mesma coisa.
-        if (Game.EntityView.FreezeAnimations)
+        if (AnimationFreeze.Enabled)
         {
             sprite.SpeedScale = 0.0f;
             sprite.Frame = sprite.SpriteFrames.GetFrameCount(VfxEffect.AnimationName) / 2;

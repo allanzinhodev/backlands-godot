@@ -5,7 +5,7 @@ namespace Backlands.Net;
 
 /// <summary>
 /// Leitor de payload com bounds-check em toda operação, espelhando
-/// server/src/net/PacketReader.hpp. Nunca lança: ao faltar byte marca
+/// server/src/protocol/PacketReader.hpp. Nunca lança: ao faltar byte marca
 /// <see cref="Failed"/> e devolve zero, e a falha é persistente.
 /// </summary>
 public struct PacketReader

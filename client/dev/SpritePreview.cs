@@ -1,8 +1,11 @@
 using System.Collections.Generic;
-using Backlands.Net;
+using Backlands.Art;
+using Backlands.Model;
+using Backlands.Scene;
+using Backlands.Ui;
 using Godot;
 
-namespace Backlands.Art;
+namespace Backlands.Dev;
 
 /// <summary>
 /// Cena de conferência da arte, sem servidor: desenha as 8 direções lógicas
@@ -34,6 +37,45 @@ public sealed partial class SpritePreview : Node3D
 
     /// Problemas encontrados; vazio quer dizer que a folha está coerente.
     public List<string> Problems { get; } = new();
+
+    /// Monta a cena de conferência de arte: nenhuma rede, câmera de frente,
+    /// e o resultado da checagem do mapeamento impresso no log.
+    public static void Enter(Node3D root, string key, LoginPanel loginPanel, Hud hud, Camera3D camera,
+                             ScreenshotCapture screenshot)
+    {
+        loginPanel.Visible = false;
+        hud.Visible = true;
+        hud.Text = $"pré-visualização da folha '{key}'";
+
+        camera.Projection = Camera3D.ProjectionType.Orthogonal;
+        camera.Size = 9.0f;
+        camera.RotationDegrees = Vector3.Zero;
+        camera.Position = new Vector3(0, 0, 12);
+
+        // A conferência usa a câmera PADRÃO do jogo, não a desta cena nem a
+        // girada pelo jogador: a referência de poses foi escrita para a guinada
+        // de 45°, e é a convenção da arte que ela prende.
+        var gameBasis = CameraRig.DefaultBasis;
+
+        var preview = new SpritePreview(key, gameBasis) { Name = "SpritePreview" };
+        root.AddChild(preview);
+
+        preview.Problems.AddRange(SpriteLayout.VerifyAgainstCamera(gameBasis));
+
+        if (preview.Problems.Count == 0)
+        {
+            GD.Print("[sprite] mapeamento de direções coerente com a câmera do jogo");
+        }
+        else
+        {
+            foreach (var problem in preview.Problems)
+            {
+                GD.PrintErr($"[sprite] {problem}");
+            }
+        }
+
+        screenshot.Schedule();
+    }
 
     public override void _Ready()
     {
@@ -67,7 +109,7 @@ public sealed partial class SpritePreview : Node3D
     /// a tabela escolheu.
     private void BuildDirectionRow(SpriteSheet sheet)
     {
-        for (var d = 0; d < 8; d++)
+        for (var d = 0; d < Directions.Count; d++)
         {
             var direction = (Direction)d;
             var (pose, flip) = SpriteLayout.PoseFor(direction, _gameCameraBasis);

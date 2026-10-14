@@ -200,7 +200,7 @@ depois de algumas execuções a captura sai com um lobo na frente do personagem.
    `vfx/<id>/<id>.png`.
 2. Escreva `vfx/<id>/<id>.json` com os campos da tabela acima, tirados do JSON
    do pacote. `on_ground` é `true` só para os círculos mágicos.
-3. Aponte um slot de `SkillBar.Slots` para o novo `id`.
+3. Aponte um slot de `TestSkills.Slots` (`client/ui/SkillSlot.cs`) para o novo `id`.
 
 O pacote organiza os efeitos por **variante** (`fire`, `hellfire`, `spirit`…) e
 por **camada** (`ground`, `main`, `full`); alguns separam ainda por **estágio**

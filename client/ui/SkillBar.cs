@@ -4,13 +4,6 @@ using Godot;
 
 namespace Backlands.Ui;
 
-/// Uma habilidade da barra de testes: o que ela dispara e como aparece.
-public readonly record struct SkillSlot(
-    string VfxId,
-    string Label,
-    int IconRow,
-    int IconColumn);
-
 /// <summary>
 /// Barra de habilidades no estilo Ragnarok: 12 slots fixos, acionados por
 /// F1–F12 ou por clique.
@@ -22,42 +15,23 @@ public readonly record struct SkillSlot(
 /// </summary>
 public sealed partial class SkillBar : Control
 {
-    /// A folha de ícones tem 14 colunas por 10 linhas. O tamanho da célula não
-    /// é inteiro (1536/14), então a região de cada ícone é calculada por
-    /// arredondamento das bordas, em vez de multiplicar um tamanho fixo — o
-    /// que acumularia erro e cortaria os ícones da direita.
-    private const string IconSheetPath = "res://icons/spell_icons.png";
-    private const int IconColumns = 14;
-    private const int IconRows = 10;
-
     private const int SlotSize = 48;
     private const int SlotGap = 4;
 
     private readonly List<TextureRect> _icons = new();
     private readonly List<Panel> _slots = new();
 
-    private Texture2D? _sheet;
+    private IconSheet? _sheet;
 
     /// Disparado quando o jogador aciona um slot (tecla ou clique).
     public event Action<int, SkillSlot>? SlotTriggered;
 
-    /// Os 12 slots de teste. Cada um aponta para um efeito em res://vfx/ e
-    /// para um ícone da folha.
-    public static readonly SkillSlot[] Slots =
+    /// Nasce escondida: só aparece quando o personagem entra no mundo.
+    public SkillBar()
     {
-        new("impact_fire_explosion", "Explosão de Fogo", 1, 3),
-        new("impact_frost_nova", "Nova de Gelo", 1, 11),
-        new("impact_lightning_strike", "Raio", 1, 7),
-        new("impact_holy_nova", "Nova Sagrada", 6, 6),
-        new("impact_healing_burst", "Cura", 2, 10),
-        new("impact_shadow_burst", "Explosão Sombria", 3, 1),
-        new("impact_meteor", "Meteoro", 1, 2),
-        new("impact_earthquake", "Terremoto", 7, 8),
-        new("impact_blade_slash", "Corte", 3, 10),
-        new("impact_tornado", "Tornado", 2, 4),
-        new("circle_inferno_ring", "Anel Infernal", 7, 3),
-        new("circle_healing_spring", "Fonte de Cura", 9, 1),
-    };
+        Name = "SkillBar";
+        Visible = false;
+    }
 
     public override void _Ready()
     {
@@ -66,7 +40,7 @@ public sealed partial class SkillBar : Control
         SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
         MouseFilter = MouseFilterEnum.Ignore;
 
-        _sheet = LoadIconSheet();
+        _sheet = IconSheet.Load();
 
         var row = new HBoxContainer
         {
@@ -76,15 +50,15 @@ public sealed partial class SkillBar : Control
         row.AddThemeConstantOverride("separation", SlotGap);
         AddChild(row);
 
-        for (var i = 0; i < Slots.Length; i++)
+        for (var i = 0; i < TestSkills.Slots.Length; i++)
         {
-            row.AddChild(BuildSlot(i, Slots[i]));
+            row.AddChild(BuildSlot(i, TestSkills.Slots[i]));
         }
 
         // Ancorada no centro da borda inferior, por âncoras explícitas: um
         // preset de layout sozinho não centraliza um container de largura
         // própria, e a fileira acabaria fora da tela.
-        var width = Slots.Length * SlotSize + (Slots.Length - 1) * SlotGap;
+        var width = TestSkills.Slots.Length * SlotSize + (TestSkills.Slots.Length - 1) * SlotGap;
         row.AnchorLeft = 0.5f;
         row.AnchorRight = 0.5f;
         row.AnchorTop = 1.0f;
@@ -122,7 +96,7 @@ public sealed partial class SkillBar : Control
         var icon = new TextureRect
         {
             Name = "Icon",
-            Texture = IconFor(slot),
+            Texture = _sheet?.Icon(slot.IconRow, slot.IconColumn),
             ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
             StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered,
             MouseFilter = MouseFilterEnum.Ignore,
@@ -157,50 +131,6 @@ public sealed partial class SkillBar : Control
         return panel;
     }
 
-    private Texture2D? IconFor(SkillSlot slot)
-    {
-        if (_sheet == null)
-        {
-            return null;
-        }
-
-        var width = (float)_sheet.GetWidth() / IconColumns;
-        var height = (float)_sheet.GetHeight() / IconRows;
-
-        var column = Math.Clamp(slot.IconColumn - 1, 0, IconColumns - 1);
-        var row = Math.Clamp(slot.IconRow - 1, 0, IconRows - 1);
-
-        var left = Mathf.RoundToInt(column * width);
-        var top = Mathf.RoundToInt(row * height);
-        var right = Mathf.RoundToInt((column + 1) * width);
-        var bottom = Mathf.RoundToInt((row + 1) * height);
-
-        return new AtlasTexture
-        {
-            Atlas = _sheet,
-            Region = new Rect2(left, top, right - left, bottom - top),
-            Margin = new Rect2(0, 0, 0, 0),
-        };
-    }
-
-    private static Texture2D? LoadIconSheet()
-    {
-        if (!FileAccess.FileExists(IconSheetPath))
-        {
-            GD.Print($"[skills] folha de ícones ausente em {IconSheetPath}");
-            return null;
-        }
-
-        using var file = FileAccess.Open(IconSheetPath, FileAccess.ModeFlags.Read);
-        var image = new Image();
-        if (image.LoadPngFromBuffer(file.GetBuffer((long)file.GetLength())) != Error.Ok)
-        {
-            GD.PushWarning("[skills] folha de ícones não é um PNG válido");
-            return null;
-        }
-        return ImageTexture.CreateFromImage(image);
-    }
-
     public override void _UnhandledKeyInput(InputEvent @event)
     {
         if (@event is not InputEventKey { Pressed: true, Echo: false } key)
@@ -227,13 +157,13 @@ public sealed partial class SkillBar : Control
 
     private void Trigger(int index)
     {
-        if (index < 0 || index >= Slots.Length)
+        if (index < 0 || index >= TestSkills.Slots.Length)
         {
             return;
         }
 
         Flash(index);
-        SlotTriggered?.Invoke(index, Slots[index]);
+        SlotTriggered?.Invoke(index, TestSkills.Slots[index]);
     }
 
     /// Pisca o slot acionado, para o jogador ver que a tecla pegou mesmo que o

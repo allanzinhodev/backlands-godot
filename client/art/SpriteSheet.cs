@@ -16,6 +16,9 @@ namespace Backlands.Art;
 /// O <see cref="SpriteFrames"/> resultante é compartilhado entre todas as
 /// entidades do mesmo tipo — construir um por entidade alocaria dezenas de
 /// recursos por monstro.
+///
+/// A detecção da grade mora em <see cref="SpriteSheetGrid"/>, e o tratamento
+/// dos pixels (cor-chave e contorno) em <see cref="SpriteSheetPixels"/>.
 /// </summary>
 public sealed class SpriteSheet
 {
@@ -91,8 +94,8 @@ public sealed class SpriteSheet
             return null;
         }
 
-        var columns = DetectBands(image, horizontal: true, SpriteLayout.FrameWidth);
-        var rows = DetectBands(image, horizontal: false, SpriteLayout.FrameHeight);
+        var columns = SpriteSheetGrid.DetectBands(image, horizontal: true, SpriteLayout.FrameWidth);
+        var rows = SpriteSheetGrid.DetectBands(image, horizontal: false, SpriteLayout.FrameHeight);
 
         if (columns.Count == 0 || rows.Count == 0)
         {
@@ -107,8 +110,8 @@ public sealed class SpriteSheet
         // O que não se tolera é a grade não bater, porque uma folha deslocada
         // desenha uma pose plausível porém errada em todas as direções.
 
-        ApplyColorKey(image);
-        ApplyInnerOutline(image, rows, columns);
+        SpriteSheetPixels.ApplyColorKey(image);
+        SpriteSheetPixels.ApplyInnerOutline(image, rows, columns);
         var texture = ImageTexture.CreateFromImage(image);
 
         var frames = new SpriteFrames();
@@ -211,206 +214,5 @@ public sealed class SpriteSheet
             image.Convert(Image.Format.Rgba8);
         }
         return image;
-    }
-
-    private readonly record struct Band(int Start, int Size);
-
-    /// <summary>
-    /// Acha onde começa cada quadro, por PERIODICIDADE das linhas de grade.
-    ///
-    /// Exigir uma linha 100% da cor de grade não funciona com arte de verdade:
-    /// os sprites transbordam da célula e cortam o separador em vários pontos.
-    /// Em vez disso, cada linha recebe uma nota (fração de pixels da cor de
-    /// grade) e procuramos o passo e a fase que maximizam a nota MÉDIA sobre
-    /// todos os separadores — alguns separadores sujos não derrubam a média.
-    /// </summary>
-    private static List<Band> DetectBands(Image image, bool horizontal, int frameSize)
-    {
-        var length = horizontal ? image.GetWidth() : image.GetHeight();
-        var across = horizontal ? image.GetHeight() : image.GetWidth();
-
-        // Nota de cada linha: quanto dela é da cor de grade.
-        var scores = new float[length];
-        for (var i = 0; i < length; i++)
-        {
-            var hits = 0;
-            for (var j = 0; j < across; j++)
-            {
-                var color = horizontal ? image.GetPixel(i, j) : image.GetPixel(j, i);
-                if (Matches(color, SpriteLayout.GridColor))
-                {
-                    hits++;
-                }
-            }
-            scores[i] = (float)hits / across;
-        }
-
-        var bestScore = 0.0f;
-        var bestSeparator = -1;
-        var bestPhase = -1;
-
-        // Separador de 1 px é o caso comum; 2 px aparece em folhas feitas à
-        // mão; 0 px é a folha sem grade nenhuma.
-        foreach (var separator in new[] { 1, 2, 0 })
-        {
-            var pitch = frameSize + separator;
-            if (pitch <= 0 || pitch > length)
-            {
-                continue;
-            }
-
-            for (var phase = 0; phase < pitch; phase++)
-            {
-                var total = 0.0f;
-                var count = 0;
-                for (var at = phase; at + frameSize <= length; at += pitch)
-                {
-                    // Com separador 0 não há linha para medir: a nota é neutra
-                    // e só a geometria decide.
-                    total += separator == 0 ? 0.5f : scores[at];
-                    count++;
-                }
-
-                if (count == 0)
-                {
-                    continue;
-                }
-
-                var average = total / count;
-                if (average > bestScore)
-                {
-                    bestScore = average;
-                    bestSeparator = separator;
-                    bestPhase = phase;
-                }
-            }
-        }
-
-        var bands = new List<Band>();
-        if (bestPhase < 0 || bestScore < 0.4f)
-        {
-            return bands; // nenhuma grade reconhecível
-        }
-
-        var step = frameSize + bestSeparator;
-        for (var start = bestPhase + bestSeparator; start + frameSize <= length; start += step)
-        {
-            bands.Add(new Band(start, frameSize));
-        }
-        return bands;
-    }
-
-    private static void ApplyColorKey(Image image)
-    {
-        for (var y = 0; y < image.GetHeight(); y++)
-        {
-            for (var x = 0; x < image.GetWidth(); x++)
-            {
-                var color = image.GetPixel(x, y);
-                if (Matches(color, SpriteLayout.BackgroundColor)
-                    || Matches(color, SpriteLayout.GridColor))
-                {
-                    image.SetPixel(x, y, new Color(0, 0, 0, 0));
-                }
-            }
-        }
-    }
-
-    /// <summary>
-    /// Escurece a borda interna de cada quadro, dando ao personagem um contorno
-    /// de 1 pixel de arte.
-    ///
-    /// Interno, e não externo: o contorno come o pixel mais externo do desenho
-    /// em vez de inchar a silhueta, então o personagem não muda de tamanho nem
-    /// invade o quadro vizinho.
-    ///
-    /// Vai QUADRO A QUADRO, e não na folha inteira, porque fora da célula é
-    /// "fora do personagem". A folha pode vir com separador de 0 px entre
-    /// células (DetectBands aceita), e aí varrer a imagem toda faria o pixel na
-    /// borda enxergar o quadro vizinho como continuação do desenho — e esse
-    /// lado ficaria sem contorno.
-    ///
-    /// Cada célula é visitada UMA vez. Passar duas vezes não engrossaria o
-    /// contorno, porque a borda continua sendo a mesma, mas escureceria de novo
-    /// os mesmos pixels.
-    /// </summary>
-    private static void ApplyInnerOutline(Image image, List<Band> rows, List<Band> columns)
-    {
-        var black = new Color(0, 0, 0);
-
-        // Só as células que o mapa usa, sem repetir: a folha costuma trazer
-        // retratos e paleta que não são personagem.
-        var cells = new HashSet<(int Row, int Column)>();
-        foreach (var (_, _, frames) in SpriteLayout.All())
-        {
-            foreach (var cell in frames)
-            {
-                if (cell.Row <= rows.Count && cell.Column <= columns.Count)
-                {
-                    cells.Add((cell.Row, cell.Column));
-                }
-            }
-        }
-
-        foreach (var (row, column) in cells)
-        {
-            var left = columns[column - 1].Start;
-            var top = rows[row - 1].Start;
-            var right = left + SpriteLayout.FrameWidth;
-            var bottom = top + SpriteLayout.FrameHeight;
-
-            // Só o RGB muda; o alpha fica intacto. É o que permite ler o alpha
-            // durante a própria passada sem copiar a célula antes: o que conta
-            // como desenho não se altera enquanto escurecemos.
-            for (var y = top; y < bottom; y++)
-            {
-                for (var x = left; x < right; x++)
-                {
-                    if (image.GetPixel(x, y).A < SpriteLayout.OutlineSolidAlpha)
-                    {
-                        continue;
-                    }
-
-                    var onBorder =
-                        IsOutside(image, x - 1, y, left, top, right, bottom)
-                        || IsOutside(image, x + 1, y, left, top, right, bottom)
-                        || IsOutside(image, x, y - 1, left, top, right, bottom)
-                        || IsOutside(image, x, y + 1, left, top, right, bottom);
-
-                    if (onBorder)
-                    {
-                        var color = image.GetPixel(x, y);
-                        var dark = color.Lerp(black, SpriteLayout.OutlineBlend);
-                        image.SetPixel(x, y, new Color(dark.R, dark.G, dark.B, color.A));
-                    }
-                }
-            }
-        }
-    }
-
-    /// Vizinhos em diagonal não contam: eles engrossariam o contorno nos cantos
-    /// e em cada degrau de uma borda diagonal, que é a maior parte da silhueta.
-    private static bool IsOutside(Image image, int x, int y,
-                                  int left, int top, int right, int bottom)
-    {
-        // Passar da célula é passar do personagem: um desenho que encosta na
-        // borda do quadro (os pés, quase sempre) precisa de contorno ali também.
-        if (x < left || x >= right || y < top || y >= bottom)
-        {
-            return true;
-        }
-        return image.GetPixel(x, y).A < SpriteLayout.OutlineSolidAlpha;
-    }
-
-    /// Comparação com tolerância de meio nível de 8 bits: PNG é sem perdas, mas
-    /// um editor de imagem pode gravar um valor adjacente ao converter perfil
-    /// de cor, e aí a grade não seria detectada sem explicação visível.
-    private static bool Matches(Color a, Color b)
-    {
-        const float tolerance = 2.0f / 255.0f;
-        return a.A > 0.0f
-            && Mathf.Abs(a.R - b.R) <= tolerance
-            && Mathf.Abs(a.G - b.G) <= tolerance
-            && Mathf.Abs(a.B - b.B) <= tolerance;
     }
 }

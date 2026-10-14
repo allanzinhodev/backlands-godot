@@ -1,6 +1,4 @@
-using Backlands.Net;
-
-namespace Backlands.Game;
+namespace Backlands.Model;
 
 /// <summary>
 /// O grid do mapa como o client o recebeu do servidor.

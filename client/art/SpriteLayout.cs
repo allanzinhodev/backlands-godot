@@ -1,6 +1,5 @@
 using System.Collections.Generic;
-using Backlands.Game;
-using Backlands.Net;
+using Backlands.Model;
 
 namespace Backlands.Art;
 
@@ -166,7 +165,7 @@ public static class SpriteLayout
     /// </summary>
     public static (SpritePose Pose, bool Flip) PoseFor(Direction direction, Godot.Basis cameraBasis)
     {
-        var delta = WorldState.DirectionDeltas[(int)direction];
+        var delta = Directions.Delta(direction);
         // Célula x vira eixo X do mundo; célula y vira eixo Z.
         var world = new Godot.Vector3(delta.X, 0, delta.Y);
 
@@ -212,7 +211,7 @@ public static class SpriteLayout
     {
         var problems = new List<string>();
 
-        for (var d = 0; d < 8; d++)
+        for (var d = 0; d < Directions.Count; d++)
         {
             var direction = (Direction)d;
             var expected = ReferencePoses[d];
@@ -226,9 +225,9 @@ public static class SpriteLayout
             }
 
             // O espelho tem de ser a direção cuja projeção tem X oposto e Y igual.
-            var delta = WorldState.DirectionDeltas[d];
+            var delta = Directions.Delta(direction);
             var world = new Godot.Vector3(delta.X, 0, delta.Y);
-            var mirrorDelta = WorldState.DirectionDeltas[(int)Mirror(direction)];
+            var mirrorDelta = Directions.Delta(Mirror(direction));
             var mirrorWorld = new Godot.Vector3(mirrorDelta.X, 0, mirrorDelta.Y);
 
             if (!Godot.Mathf.IsEqualApprox(mirrorWorld.Dot(cameraBasis.Column0),

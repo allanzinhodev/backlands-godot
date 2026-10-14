@@ -6,7 +6,7 @@ namespace Backlands.Net;
 
 /// <summary>
 /// Monta um frame completo (header + payload), espelhando
-/// server/src/net/PacketWriter.hpp. O campo length só é conhecido no fim, então
+/// server/src/protocol/PacketWriter.hpp. O campo length só é conhecido no fim, então
 /// os 4 bytes do header são reservados na construção e preenchidos em
 /// <see cref="Finish"/>.
 /// </summary>
