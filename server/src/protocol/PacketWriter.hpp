@@ -1,6 +1,6 @@
 #pragma once
 
-#include "net/Protocol.hpp"
+#include "protocol/Protocol.hpp"
 
 #include <cstdint>
 #include <cstring>
@@ -8,7 +8,7 @@
 #include <string_view>
 #include <vector>
 
-namespace backlands::net {
+namespace backlands::protocol {
 
 // Monta um frame completo (header + payload). O campo `length` do header só é
 // conhecido no fim, então reservamos os 4 bytes na construção e os preenchemos
@@ -63,4 +63,4 @@ private:
     std::vector<std::byte> buffer_;
 };
 
-} // namespace backlands::net
+} // namespace backlands::protocol

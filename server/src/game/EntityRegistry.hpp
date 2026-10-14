@@ -16,12 +16,13 @@ namespace backlands::game {
 class EntityRegistry {
 public:
     // Motivo de recusa de um login. O client recebe isto como código.
+    // (O código no fio é protocol::LoginFailure, que tem os mesmos valores e
+    // ainda o motivo de versão de protocolo, que o registro nunca produz.)
     enum class SpawnError : std::uint8_t {
         None = 0,
         InvalidName = 1,
         NameInUse = 2,
         AlreadySpawned = 3,
-        ProtocolMismatch = 4,
     };
 
     struct SpawnResult {

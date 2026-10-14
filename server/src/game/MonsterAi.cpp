@@ -1,9 +1,12 @@
 #include "game/MonsterAi.hpp"
 
-#include "game/Combat.hpp"
+#include "game/Geometry.hpp"
+#include "game/LineOfSight.hpp"
+#include "game/Movement.hpp"
 #include "game/Pathfinder.hpp"
 
 #include <algorithm>
+#include <utility>
 
 namespace backlands::game {
 namespace {
@@ -160,6 +163,29 @@ std::vector<WanderIntent> advance_monster_ai(EntityRegistry& registry, const Map
     }
 
     return wanders;
+}
+
+std::vector<EntityId> start_wander_walks(EntityRegistry& registry, const MapGrid& grid,
+                                         const std::vector<WanderIntent>& intents,
+                                         std::uint32_t now_ms) {
+    std::vector<EntityId> started;
+
+    for (const WanderIntent& intent : intents) {
+        Entity* monster = registry.find(intent.id);
+        if (monster == nullptr || monster->walk.walking()) {
+            continue;
+        }
+
+        WalkPath path = find_path(grid, monster->cell, intent.destination);
+        if (path.empty()) {
+            continue;
+        }
+        if (begin_walk(*monster, std::move(path), intent.destination, now_ms)) {
+            started.push_back(monster->id);
+        }
+    }
+
+    return started;
 }
 
 } // namespace backlands::game

@@ -1,8 +1,8 @@
-#include "net/PacketWriter.hpp"
+#include "protocol/PacketWriter.hpp"
 
 #include <stdexcept>
 
-namespace backlands::net {
+namespace backlands::protocol {
 
 std::vector<std::byte> PacketWriter::finish() {
     // Estourar o teto aqui é bug nosso (pacote montado pelo servidor), não
@@ -19,4 +19,4 @@ std::vector<std::byte> PacketWriter::finish() {
     return std::move(buffer_);
 }
 
-} // namespace backlands::net
+} // namespace backlands::protocol

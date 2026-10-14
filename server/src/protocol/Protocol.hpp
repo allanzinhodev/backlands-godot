@@ -4,7 +4,7 @@
 #include <cstdint>
 
 // Constantes do framing. Contrato espelhado em docs/protocol.md e no client C#.
-namespace backlands::net {
+namespace backlands::protocol {
 
 // Header: uint16 opcode + uint16 length (tamanho TOTAL, header incluído), little-endian.
 inline constexpr std::size_t kHeaderSize = 4;
@@ -27,4 +27,4 @@ struct PacketHeader {
     std::uint16_t length = 0;
 };
 
-} // namespace backlands::net
+} // namespace backlands::protocol

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "net/Session.hpp"
+#include "net/SessionHandler.hpp"
 
 #include <boost/asio/io_context.hpp>
 #include <boost/asio/ip/tcp.hpp>
@@ -9,12 +10,10 @@
 
 namespace backlands::net {
 
-class PacketDispatcher;
-
 // Aceita conexões e cria uma Session por cliente.
 class Listener {
 public:
-    Listener(boost::asio::io_context& io, std::uint16_t port, PacketDispatcher& dispatcher);
+    Listener(boost::asio::io_context& io, std::uint16_t port, SessionHandler& handler);
 
     void start();
     void stop();
@@ -25,7 +24,7 @@ private:
     void accept_next();
 
     boost::asio::ip::tcp::acceptor acceptor_;
-    PacketDispatcher& dispatcher_;
+    SessionHandler& handler_;
     std::uint16_t port_;
     SessionId next_session_id_ = 1;
 };

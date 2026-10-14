@@ -1,13 +1,15 @@
+#include "app/GameLoop.hpp"
 #include "core/Config.hpp"
 #include "core/Log.hpp"
-#include "game/GameLoop.hpp"
-#include "game/World.hpp"
-#include "handlers/Dispatch.hpp"
+#include "handlers/GameHandlers.hpp"
+#include "handlers/PacketDispatcher.hpp"
 #include "net/Listener.hpp"
+#include "world/World.hpp"
 
 #include <boost/asio/io_context.hpp>
 #include <boost/asio/signal_set.hpp>
 
+#include <cstdint>
 #include <exception>
 #include <string>
 
@@ -41,17 +43,19 @@ int main(int argc, char** argv) {
         // mundo tem um só dono, então não há lock nem data race por construção.
         boost::asio::io_context io(1);
 
-        game::World world;
+        world::World world;
         world.set_player_sprite(config.player_sprite);
         world.load_map(config.map_path);
 
-        net::PacketDispatcher dispatcher(world);
-        net::install_handlers(dispatcher);
+        handlers::PacketDispatcher dispatcher(world);
+        handlers::install_game_handlers(dispatcher, world);
 
         net::Listener listener(io, config.port, dispatcher);
         listener.start();
 
-        game::GameLoop loop(io, world, config.ticks_per_second);
+        app::GameLoop loop(
+            io, [&world](std::uint32_t delta_ms) { world.tick(delta_ms); },
+            config.ticks_per_second);
         loop.start();
 
         boost::asio::signal_set signals(io, SIGINT, SIGTERM);

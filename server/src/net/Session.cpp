@@ -1,9 +1,8 @@
 #include "net/Session.hpp"
 
 #include "core/Log.hpp"
-#include "handlers/Dispatch.hpp"
-#include "net/Opcodes.hpp"
-#include "net/PacketReader.hpp"
+#include "protocol/Opcodes.hpp"
+#include "protocol/PacketReader.hpp"
 
 #include <boost/asio/read.hpp>
 #include <boost/asio/write.hpp>
@@ -24,10 +23,10 @@ std::string describe_endpoint(const asio::ip::tcp::socket& socket) {
 }
 } // namespace
 
-Session::Session(SessionId id, asio::ip::tcp::socket socket, PacketDispatcher& dispatcher)
+Session::Session(SessionId id, asio::ip::tcp::socket socket, SessionHandler& handler)
     : id_(id),
       socket_(std::move(socket)),
-      dispatcher_(dispatcher),
+      handler_(handler),
       remote_(describe_endpoint(socket_)) {}
 
 void Session::start() {
@@ -50,18 +49,18 @@ void Session::read_header() {
                 return;
             }
 
-            PacketReader header(header_buffer_);
+            protocol::PacketReader header(header_buffer_);
             const std::uint16_t opcode = header.read_u16();
             const std::uint16_t length = header.read_u16();
 
             // Validação do framing antes de qualquer alocação: um `length`
             // absurdo não pode nos fazer reservar memória arbitrária.
-            if (length < kHeaderSize || length > kMaxPacketSize) {
+            if (length < protocol::kHeaderSize || length > protocol::kMaxPacketSize) {
                 log::warn("sessão {}: length inválido {} (opcode 0x{:04X})", id_, length, opcode);
                 close("length inválido");
                 return;
             }
-            if (!is_known_client_opcode(opcode)) {
+            if (!protocol::is_known_client_opcode(opcode)) {
                 log::warn("sessão {}: opcode desconhecido 0x{:04X}", id_, opcode);
                 close("opcode desconhecido");
                 return;
@@ -72,10 +71,10 @@ void Session::read_header() {
 }
 
 void Session::read_body(std::uint16_t opcode, std::uint16_t length) {
-    const std::size_t payload_size = static_cast<std::size_t>(length) - kHeaderSize;
+    const std::size_t payload_size = static_cast<std::size_t>(length) - protocol::kHeaderSize;
     if (payload_size == 0) {
         body_buffer_.clear();
-        if (!dispatcher_.dispatch(*this, opcode, {})) {
+        if (!handler_.on_packet(*this, opcode, {})) {
             // close_after_flush e não close: o handler pode ter enfileirado o
             // motivo da recusa, e o client precisa recebê-lo antes do fim.
             close_after_flush("handler recusou o pacote");
@@ -96,7 +95,7 @@ void Session::read_body(std::uint16_t opcode, std::uint16_t length) {
                 close("erro de leitura do payload");
                 return;
             }
-            if (!dispatcher_.dispatch(*this, opcode, body_buffer_)) {
+            if (!handler_.on_packet(*this, opcode, body_buffer_)) {
                 close_after_flush("handler recusou o pacote");
                 return;
             }
@@ -174,7 +173,7 @@ void Session::close(const char* reason) {
     socket_.close(ec);
 
     log::info("sessão {} ({}) encerrada: {}", id_, remote_, reason);
-    dispatcher_.on_session_closed(*this);
+    handler_.on_session_closed(*this);
 }
 
 } // namespace backlands::net

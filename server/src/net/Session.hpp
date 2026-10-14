@@ -1,6 +1,8 @@
 #pragma once
 
-#include "net/Protocol.hpp"
+#include "net/SessionHandler.hpp"
+#include "protocol/Protocol.hpp"
+#include "world/Connection.hpp"
 
 #include <boost/asio/ip/tcp.hpp>
 
@@ -15,9 +17,7 @@
 
 namespace backlands::net {
 
-class PacketDispatcher;
-
-using SessionId = std::uint32_t;
+using SessionId = world::ConnectionId;
 
 // Uma conexão TCP. Máquina de estados de leitura (header -> body) e fila de
 // escrita própria. Vive em shared_ptr porque as continuações do Asio precisam
@@ -25,18 +25,20 @@ using SessionId = std::uint32_t;
 //
 // Thread-safety: nenhuma. Tudo roda no único thread do io_context, igual ao
 // modelo do eAthena — sem locks, sem strands.
-class Session : public std::enable_shared_from_this<Session> {
+//
+// Para o mundo, é só uma world::Connection: o World nunca vê o socket.
+class Session final : public world::Connection, public std::enable_shared_from_this<Session> {
 public:
-    Session(SessionId id, boost::asio::ip::tcp::socket socket, PacketDispatcher& dispatcher);
+    Session(SessionId id, boost::asio::ip::tcp::socket socket, SessionHandler& handler);
 
-    [[nodiscard]] SessionId id() const noexcept { return id_; }
-    [[nodiscard]] bool closed() const noexcept { return closed_; }
-    [[nodiscard]] const std::string& remote() const noexcept { return remote_; }
+    [[nodiscard]] SessionId id() const noexcept override { return id_; }
+    [[nodiscard]] bool closed() const noexcept override { return closed_; }
+    [[nodiscard]] const std::string& remote() const noexcept override { return remote_; }
 
     void start();
 
     // Enfileira um frame já pronto (saído de PacketWriter::finish()).
-    void send(std::vector<std::byte> frame);
+    void send(std::vector<std::byte> frame) override;
 
     // Encerra a sessão imediatamente, descartando o que ainda não foi enviado.
     // Para erro de socket ou framing inválido, onde não há nada a explicar.
@@ -56,10 +58,10 @@ private:
 
     SessionId id_;
     boost::asio::ip::tcp::socket socket_;
-    PacketDispatcher& dispatcher_;
+    SessionHandler& handler_;
     std::string remote_;
 
-    std::array<std::byte, kHeaderSize> header_buffer_{};
+    std::array<std::byte, protocol::kHeaderSize> header_buffer_{};
     std::vector<std::byte> body_buffer_;
 
     // async_write nunca pode se sobrepor no mesmo socket: a fila garante um
@@ -75,7 +77,5 @@ private:
     bool closing_ = false;
     const char* pending_close_reason_ = nullptr;
 };
-
-using SessionPtr = std::shared_ptr<Session>;
 
 } // namespace backlands::net

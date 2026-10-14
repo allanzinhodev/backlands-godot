@@ -1,16 +1,14 @@
 #include "net/Listener.hpp"
 
 #include "core/Log.hpp"
-#include "game/World.hpp"
-#include "handlers/Dispatch.hpp"
 
 #include <utility>
 
 namespace backlands::net {
 namespace asio = boost::asio;
 
-Listener::Listener(asio::io_context& io, std::uint16_t port, PacketDispatcher& dispatcher)
-    : acceptor_(io), dispatcher_(dispatcher), port_(port) {}
+Listener::Listener(asio::io_context& io, std::uint16_t port, SessionHandler& handler)
+    : acceptor_(io), handler_(handler), port_(port) {}
 
 void Listener::start() {
     const asio::ip::tcp::endpoint endpoint(asio::ip::tcp::v4(), port_);
@@ -42,8 +40,10 @@ void Listener::accept_next() {
         }
 
         const SessionId id = next_session_id_++;
-        auto session = std::make_shared<Session>(id, std::move(socket), dispatcher_);
-        dispatcher_.world().add_session(session);
+        auto session = std::make_shared<Session>(id, std::move(socket), handler_);
+        // Avisa antes de começar a ler: assim todo pacote e todo encerramento
+        // da sessão chegam a quem já a conhece, nunca antes do registro.
+        handler_.on_session_opened(session);
         session->start();
 
         accept_next();

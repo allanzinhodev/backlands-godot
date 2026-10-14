@@ -1,6 +1,6 @@
 #pragma once
 
-#include "net/Protocol.hpp"
+#include "protocol/Protocol.hpp"
 
 #include <cstdint>
 #include <cstring>
@@ -8,7 +8,7 @@
 #include <string>
 #include <string_view>
 
-namespace backlands::net {
+namespace backlands::protocol {
 
 // Leitor de payload com bounds-check em toda operação. Nunca lança: se algo não
 // cabe, marca `failed()` e devolve zero. O handler checa `ok()` uma única vez no
@@ -79,4 +79,4 @@ private:
     bool failed_ = false;
 };
 
-} // namespace backlands::net
+} // namespace backlands::protocol

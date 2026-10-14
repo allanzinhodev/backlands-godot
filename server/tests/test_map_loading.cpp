@@ -1,5 +1,9 @@
+#include "game/EntityRegistry.hpp"
 #include "game/MapGrid.hpp"
+#include "game/MapLoader.hpp"
+#include "game/MonsterSpawner.hpp"
 #include "game/Pathfinder.hpp"
+#include "game/Rng.hpp"
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
@@ -11,6 +15,8 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <tuple>
+#include <vector>
 
 using namespace backlands::game;
 using Catch::Matchers::ContainsSubstring;
@@ -263,4 +269,46 @@ TEST_CASE("o rio de starter_fields bloqueia e a ponte é a única passagem") {
         CHECK(find_path(grid, definition.spawn, Cell{0, 0}).empty());
         CHECK(find_path(grid, definition.spawn, Cell{999, 999}).empty());
     }
+}
+
+TEST_CASE("os monstros de starter_fields nascem nas mesmas células a cada execução") {
+    const auto definition = load_map_from_lua(BACKLANDS_REPO_MAP);
+
+    int expected = 0;
+    for (const MonsterSpawn& spawn : definition.spawns) {
+        expected += spawn.count;
+    }
+    REQUIRE(expected > 0);
+
+    // Povoa um registro novo e devolve (id, x, y) de cada monstro, ordenado
+    // por id: a ordem de iteração do registro não é a de criação.
+    const auto populate = [&definition, expected](std::uint32_t seed) {
+        EntityRegistry registry;
+        Rng rng{seed};
+        CHECK(spawn_map_monsters(registry, definition, rng) == expected);
+
+        std::vector<std::tuple<EntityId, std::uint16_t, std::uint16_t>> placed;
+        for (const Entity* monster : registry.all()) {
+            // Em terra firme, com a casa onde nasceu e a ficha da espécie.
+            CHECK(definition.grid.is_walkable(monster->cell));
+            CHECK(monster->brain.home == monster->cell);
+            const MonsterTemplate* tmpl = definition.find_monster(monster->brain.species);
+            REQUIRE(tmpl != nullptr);
+            CHECK(monster->name == tmpl->name);
+            CHECK(monster->stats.hp == tmpl->max_hp);
+            CHECK(monster->stats.max_hp == tmpl->max_hp);
+            CHECK(monster->walk.speed_ms_per_cell == tmpl->walk_speed_ms);
+            CHECK(monster->brain.respawn_delay_ms == tmpl->respawn_delay_ms);
+            CHECK(monster->sprite == (tmpl->sprite.empty() ? tmpl->species : tmpl->sprite));
+            placed.emplace_back(monster->id, monster->cell.x, monster->cell.y);
+        }
+        std::sort(placed.begin(), placed.end());
+        return placed;
+    };
+
+    // A semente fixa do World: com ela o mundo é o mesmo a cada execução, o
+    // que torna um playtest comparável com o anterior.
+    const auto first = populate(0xB4C41A1Du);
+    CHECK(first.size() == static_cast<std::size_t>(expected));
+    CHECK(populate(0xB4C41A1Du) == first);
 }

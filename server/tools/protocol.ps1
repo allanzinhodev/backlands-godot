@@ -8,7 +8,7 @@
     contrato de docs/protocol.md que o servidor C++ e o client C#.
 #>
 
-# --- Opcodes (espelham server/src/net/Opcodes.hpp) -------------------------
+# --- Opcodes (espelham server/src/protocol/Opcodes.hpp) --------------------
 $script:C_PING = 0x0001
 $script:C_LOGIN = 0x0002
 $script:C_WALK_TO = 0x0003
@@ -28,10 +28,10 @@ $script:S_ENTITY_DIED = 0x100B
 $script:S_ENTITY_RESPAWN = 0x100C
 $script:S_ATTACK_REJECTED = 0x100D
 
-# Precisa bater com kProtocolVersion em server/src/net/Protocol.hpp.
+# Precisa bater com kProtocolVersion em server/src/protocol/Protocol.hpp.
 $script:PROTOCOL_VERSION = 2
 
-# Motivos de S_LOGIN_FAILED (EntityRegistry::SpawnError).
+# Motivos de S_LOGIN_FAILED (protocol::LoginFailure).
 $script:LOGIN_FAIL_INVALID_NAME = 1
 $script:LOGIN_FAIL_NAME_IN_USE = 2
 $script:LOGIN_FAIL_ALREADY_SPAWNED = 3

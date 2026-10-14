@@ -1,3 +1,4 @@
+#include "game/Chase.hpp"
 #include "game/EntityRegistry.hpp"
 #include "game/MapGrid.hpp"
 #include "game/Movement.hpp"
@@ -239,4 +240,53 @@ TEST_CASE("caminhada diagonal gasta o tempo maior por passo") {
 
     advance_movement(fixture.registry, grid, 210);
     CHECK(fixture.entity().cell == Cell{1, 1});
+}
+
+TEST_CASE("perseguição sai andando atrás do alvo e para ao entrar no alcance") {
+    const auto grid = grid_from({
+        "..........",
+        "..........",
+        "..........",
+    });
+
+    Fixture fixture(Cell{0, 1});
+    const EntityId prey = fixture.registry.spawn_monster("Presa", Cell{6, 1}).id;
+    fixture.entity().combat.target = prey;
+
+    auto events = advance_chasing(fixture.registry, grid, 0);
+    REQUIRE(events.size() == 1);
+    CHECK(events[0].id == fixture.id);
+    CHECK(events[0].type == ChaseEvent::Type::StartedWalk);
+    REQUIRE(fixture.entity().walk.walking());
+
+    // Andando e ainda longe: segue a rota em que se comprometeu, sem evento.
+    const std::vector<Direction> committed = fixture.entity().walk.path;
+    CHECK(advance_chasing(fixture.registry, grid, 50).empty());
+    CHECK(fixture.entity().walk.path == committed);
+
+    // Entrou no alcance no meio do caminho: corta a rota e vira para o alvo.
+    fixture.entity().cell = Cell{5, 1};
+    events = advance_chasing(fixture.registry, grid, 100);
+    REQUIRE(events.size() == 1);
+    CHECK(events[0].id == fixture.id);
+    CHECK(events[0].type == ChaseEvent::Type::ReachedTarget);
+    CHECK_FALSE(fixture.entity().walk.walking());
+    CHECK(fixture.entity().facing == Direction::East);
+
+    // Parado e no alcance: daqui em diante é o combate que age.
+    CHECK(advance_chasing(fixture.registry, grid, 150).empty());
+}
+
+TEST_CASE("perseguição sem rota até o alvo não sai andando") {
+    const auto grid = grid_from({
+        "..~..",
+        "..~..",
+        "..~..",
+    });
+
+    Fixture fixture(Cell{0, 1});
+    fixture.entity().combat.target = fixture.registry.spawn_monster("Presa", Cell{4, 1}).id;
+
+    CHECK(advance_chasing(fixture.registry, grid, 0).empty());
+    CHECK_FALSE(fixture.entity().walk.walking());
 }

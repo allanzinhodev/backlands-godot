@@ -2,8 +2,7 @@
 
 #include "game/Entity.hpp"
 #include "game/EntityRegistry.hpp"
-#include "game/MapGrid.hpp"
-#include "game/MonsterAi.hpp"
+#include "game/Rng.hpp"
 
 #include <cstdint>
 #include <vector>
@@ -55,12 +54,6 @@ struct CombatEvent {
     std::int32_t hp = 0; // HP do alvo após o evento
 };
 
-// Distância de Chebyshev em células: num grid com diagonais, mover-se na
-// diagonal cobre uma célula em cada eixo, então o alcance tem de ser medido
-// assim — usar distância euclidiana faria o alcance diagonal parecer maior do
-// que o movimento permite.
-[[nodiscard]] int cell_distance(Cell a, Cell b) noexcept;
-
 [[nodiscard]] bool in_attack_range(const Entity& attacker, const Entity& target) noexcept;
 
 // O golpe acertou? Taxa = 80 + hit - flee, limitada a [kMinHitRate, kMaxHitRate].
@@ -80,6 +73,12 @@ inline constexpr int kMaxHitRate = 100;
 [[nodiscard]] DamageResult roll_attack(const Stats& attacker, const Stats& defender,
                                        Rng& rng) noexcept;
 
+// A parte da validação que não depende de alcance nem de relógio: o alvo
+// existe, não é o próprio atacante, e os dois estão vivos (nesta ordem). É o
+// que se checa ao SELECIONAR um alvo, quando o atacante ainda pode estar longe.
+[[nodiscard]] AttackRejection validate_attack_target(const Entity& attacker,
+                                                     const Entity* target) noexcept;
+
 // Valida o pedido sem aplicar nada. Separado da aplicação para ser testável e
 // para o handler poder responder ao client sem efeitos colaterais.
 [[nodiscard]] AttackRejection validate_attack(const Entity& attacker, const Entity* target,
@@ -92,5 +91,12 @@ DamageResult apply_damage(Entity& target, std::int32_t damage) noexcept;
 // alcance e cooldown. Devolve os eventos para quem chama replicar.
 [[nodiscard]] std::vector<CombatEvent> advance_combat(EntityRegistry& registry,
                                                       std::uint32_t now_ms, Rng& rng);
+
+// Consequências de jogo dos eventos de combate, evento a evento e na ordem em
+// que vieram: monstro atingido passa a revidar; quem morreu agenda o respawn e
+// deixa de ser alvo de quem mirava nele. Não emite pacotes — replicar os
+// eventos é com quem chama.
+void react_to_combat(EntityRegistry& registry, const std::vector<CombatEvent>& events,
+                     std::uint32_t now_ms);
 
 } // namespace backlands::game

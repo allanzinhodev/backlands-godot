@@ -2,10 +2,13 @@
 #include "game/Entity.hpp"
 #include "game/EntityRegistry.hpp"
 #include "game/MonsterAi.hpp"
+#include "game/Respawn.hpp"
+#include "game/Rng.hpp"
 
 #include <catch2/catch_test_macros.hpp>
 
 #include <cstdint>
+#include <vector>
 
 using namespace backlands::game;
 
@@ -395,4 +398,121 @@ TEST_CASE("o monstro não repensa durante a animação do golpe") {
 
     // Sem esta trava o monstro tremeria e recalcularia caminho no meio do golpe.
     CHECK(registry.find(monster.id)->brain.next_think_at_ms >= 1700);
+}
+
+TEST_CASE("golpe faz o monstro atingido revidar, se ainda estiver vivo") {
+    EntityRegistry registry;
+    Entity& monster = registry.spawn_monster("Bicho", Cell{5, 5});
+    const auto attacker = registry.spawn_player(1, "Atacante", Cell{6, 5});
+    const auto victim = registry.spawn_player(2, "Vitima", Cell{7, 5});
+    REQUIRE(attacker.ok());
+    REQUIRE(victim.ok());
+
+    CombatEvent hit;
+    hit.type = CombatEvent::Type::Hit;
+    hit.source = attacker.id;
+    hit.target = monster.id;
+
+    SECTION("monstro vivo passa a revidar em quem bateu") {
+        react_to_combat(registry, {hit}, 0);
+        CHECK(monster.brain.retaliate_against == attacker.id);
+    }
+
+    SECTION("monstro que morreu no golpe não guarda rancor") {
+        monster.stats.hp = 0;
+        react_to_combat(registry, {hit}, 0);
+        CHECK(monster.brain.retaliate_against == kNoEntity);
+    }
+
+    SECTION("jogador atingido não ganha rancor") {
+        hit.target = victim.id;
+        react_to_combat(registry, {hit}, 0);
+        CHECK(registry.find(victim.id)->brain.retaliate_against == kNoEntity);
+    }
+}
+
+TEST_CASE("morte agenda o renascer e faz quem mirava no morto largar o alvo") {
+    EntityRegistry registry;
+    Entity& monster = registry.spawn_monster("Bicho", Cell{5, 5});
+    monster.brain.respawn_delay_ms = 7000;
+    monster.stats.hp = 0;
+    const auto killer = registry.spawn_player(1, "Matador", Cell{6, 5});
+    const auto bystander = registry.spawn_player(2, "Outro", Cell{7, 5});
+    REQUIRE(killer.ok());
+    REQUIRE(bystander.ok());
+
+    registry.find(bystander.id)->combat.target = monster.id;
+    // Mira em outra entidade: a morte do monstro não mexe nesse alvo.
+    registry.find(killer.id)->combat.target = bystander.id;
+
+    CombatEvent died;
+    died.type = CombatEvent::Type::Died;
+    died.source = killer.id;
+    died.target = monster.id;
+    react_to_combat(registry, {died}, 1000);
+
+    CHECK(monster.combat.respawn_at_ms == 8000);
+    CHECK(registry.find(bystander.id)->combat.target == kNoEntity);
+    CHECK(registry.find(killer.id)->combat.target == bystander.id);
+}
+
+TEST_CASE("monstro renasce no atraso da espécie, jogador no atraso fixo") {
+    EntityRegistry registry;
+    Entity& monster = registry.spawn_monster("Bicho", Cell{5, 5});
+    monster.brain.respawn_delay_ms = 12000;
+    const auto player = registry.spawn_player(1, "Caido", Cell{6, 5});
+    REQUIRE(player.ok());
+
+    schedule_respawn(monster, 100);
+    schedule_respawn(*registry.find(player.id), 100);
+
+    CHECK(monster.combat.respawn_at_ms == 12100);
+    CHECK(registry.find(player.id)->combat.respawn_at_ms == 100 + kPlayerRespawnDelayMs);
+}
+
+TEST_CASE("renascer devolve vida cheia, em casa ou no ponto inicial, sem alvo nem rancor") {
+    EntityRegistry registry;
+    const Cell player_spawn{3, 3};
+
+    Entity& monster = registry.spawn_monster("Bicho", Cell{9, 9});
+    monster.brain.home = Cell{10, 10};
+    const auto player = registry.spawn_player(1, "Caido", Cell{6, 5});
+    REQUIRE(player.ok());
+    Entity& fallen = *registry.find(player.id);
+
+    for (Entity* dead : {&monster, &fallen}) {
+        dead->stats.hp = 0;
+        dead->facing = Direction::North;
+        dead->walk.path = {Direction::East};
+        dead->combat.respawn_at_ms = 5000;
+    }
+    monster.combat.target = fallen.id;
+    fallen.combat.target = monster.id;
+    monster.brain.retaliate_against = fallen.id;
+
+    // Morto sem renascer agendado fica no chão.
+    Entity& forgotten = registry.spawn_monster("Esquecido", Cell{12, 12});
+    forgotten.stats.hp = 0;
+
+    CHECK(advance_respawns(registry, player_spawn, 4999).empty());
+    CHECK_FALSE(monster.alive());
+
+    CHECK(advance_respawns(registry, player_spawn, 5000).size() == 2);
+
+    CHECK(monster.cell == Cell{10, 10});
+    CHECK(fallen.cell == player_spawn);
+    for (const Entity* back : {&monster, &fallen}) {
+        CHECK(back->stats.hp == back->stats.max_hp);
+        CHECK(back->combat.respawn_at_ms == 0);
+        CHECK(back->facing == Direction::South);
+        CHECK_FALSE(back->walk.walking());
+        CHECK(back->combat.target == kNoEntity);
+    }
+    CHECK(monster.brain.retaliate_against == kNoEntity);
+    // Não sai passeando no mesmo instante em que volta.
+    CHECK(monster.brain.next_wander_at_ms == 5000 + kIdleWanderIntervalMs);
+    CHECK_FALSE(forgotten.alive());
+
+    // Quem já voltou não renasce de novo.
+    CHECK(advance_respawns(registry, player_spawn, 6000).empty());
 }

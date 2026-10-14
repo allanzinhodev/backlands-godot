@@ -108,7 +108,7 @@ function Read-EntityWalk {
     }
 }
 
-# Mesmos deslocamentos de server/src/game/Pathfinder.cpp.
+# Mesmos deslocamentos de server/src/game/Geometry.hpp.
 $script:Deltas = @(
     @(0, 1), @(-1, 1), @(-1, 0), @(-1, -1), @(0, -1), @(1, -1), @(1, 0), @(1, 1)
 )

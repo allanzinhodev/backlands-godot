@@ -40,12 +40,6 @@ struct Visited {
 
 } // namespace
 
-Cell step(Cell from, Direction dir) noexcept {
-    const auto& delta = kDirectionDeltas[static_cast<std::uint8_t>(dir)];
-    return Cell{static_cast<std::uint16_t>(from.x + delta.dx),
-                static_cast<std::uint16_t>(from.y + delta.dy)};
-}
-
 bool can_step_diagonally(const MapGrid& grid, Cell from, Direction dir) {
     if (!is_diagonal(dir)) {
         return true;
@@ -57,59 +51,6 @@ bool can_step_diagonally(const MapGrid& grid, Cell from, Direction dir) {
     const Cell vertical{from.x, static_cast<std::uint16_t>(from.y + delta.dy)};
 
     return grid.is_walkable(horizontal) && grid.is_walkable(vertical);
-}
-
-Direction direction_towards(Cell from, Cell to) noexcept {
-    const int dx = static_cast<int>(to.x) - static_cast<int>(from.x);
-    const int dy = static_cast<int>(to.y) - static_cast<int>(from.y);
-
-    const int sx = (dx > 0) ? 1 : (dx < 0 ? -1 : 0);
-    const int sy = (dy > 0) ? 1 : (dy < 0 ? -1 : 0);
-
-    for (std::uint8_t i = 0; i < kDirectionCount; ++i) {
-        if (kDirectionDeltas[i].dx == sx && kDirectionDeltas[i].dy == sy) {
-            return static_cast<Direction>(i);
-        }
-    }
-    return Direction::South; // from == to
-}
-
-bool has_line_of_sight(const MapGrid& grid, Cell from, Cell to) {
-    // Bresenham sobre células. Só as células INTERMEDIÁRIAS bloqueiam: incluir
-    // as pontas faria quem está sobre terreno que bloqueia visão ficar cego.
-    int x0 = from.x;
-    int y0 = from.y;
-    const int x1 = to.x;
-    const int y1 = to.y;
-
-    const int dx = std::abs(x1 - x0);
-    const int dy = -std::abs(y1 - y0);
-    const int sx = x0 < x1 ? 1 : -1;
-    const int sy = y0 < y1 ? 1 : -1;
-    int error = dx + dy;
-
-    while (true) {
-        if (x0 == x1 && y0 == y1) {
-            return true;
-        }
-
-        const int doubled = 2 * error;
-        if (doubled >= dy) {
-            error += dy;
-            x0 += sx;
-        }
-        if (doubled <= dx) {
-            error += dx;
-            y0 += sy;
-        }
-
-        if (x0 == x1 && y0 == y1) {
-            return true;
-        }
-        if (grid.blocks_los(Cell{static_cast<std::uint16_t>(x0), static_cast<std::uint16_t>(y0)})) {
-            return false;
-        }
-    }
 }
 
 WalkPath find_path(const MapGrid& grid, Cell from, Cell to) {

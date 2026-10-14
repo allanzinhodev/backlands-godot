@@ -2,6 +2,7 @@
 #include "game/EntityRegistry.hpp"
 #include "game/MapGrid.hpp"
 #include "game/MonsterAi.hpp"
+#include "game/Respawn.hpp"
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -195,11 +196,13 @@ TEST_CASE("o rancor não sobrevive à morte do monstro") {
 
     // Morre e "renasce" como o World faz: vida cheia, alvo e rancor zerados.
     // Sem zerar o rancor, um passivo volta atacando quem o matou antes, sem
-    // ter sido provocado de novo.
+    // ter sido provocado de novo. O renascer aqui é o próprio
+    // advance_respawns que o World chama no tick, e não uma cópia dele.
     auto& m = den.at(den.monster);
-    m.stats.hp = m.stats.max_hp;
-    m.combat.clear_target();
-    m.brain.retaliate_against = kNoEntity;
+    m.stats.hp = 0;
+    schedule_respawn(m, now);
+    now = m.combat.respawn_at_ms;
+    REQUIRE(advance_respawns(den.registry, Cell{1, 1}, now).size() == 1);
 
     den.think(now);
     CHECK(den.at(den.monster).combat.target == kNoEntity);
@@ -282,6 +285,33 @@ TEST_CASE("monstro em movimento não recebe novo passeio") {
         now += kMonsterThinkIntervalMs;
         CHECK(advance_monster_ai(den.registry, den.grid, now, den.rng).empty());
     }
+}
+
+TEST_CASE("o passeio decidido vira caminhada, menos para quem já anda ou não tem rota") {
+    Den den;
+    const EntityId idle = den.spawn(Cell{20, 20}, /*view_range=*/0).id;
+    const EntityId stranded = den.registry.spawn_monster("Ilhado", Cell{30, 30}).id;
+    Entity& busy = den.registry.spawn_monster("Ocupado", Cell{10, 10});
+    busy.walk.path = {Direction::South, Direction::South};
+    const std::vector<Direction> busy_path = busy.walk.path;
+
+    const std::vector<WanderIntent> intents = {
+        {idle, Cell{23, 20}},
+        {stranded, Cell{500, 500}}, // fora do mapa: sem rota, o passeio é descartado
+        {busy.id, Cell{13, 10}},
+        {9999, Cell{5, 5}},         // sumiu do mundo entre decidir e executar
+    };
+    const std::vector<EntityId> started =
+        start_wander_walks(den.registry, den.grid, intents, 0);
+
+    REQUIRE(started.size() == 1);
+    CHECK(started[0] == idle);
+    CHECK(den.at(idle).walk.walking());
+    CHECK(den.at(idle).walk.destination == Cell{23, 20});
+    CHECK_FALSE(den.at(stranded).walk.walking());
+
+    // Quem já anda é deixado em paz: a rota em curso não é trocada.
+    CHECK(den.at(busy.id).walk.path == busy_path);
 }
 
 TEST_CASE("busca do jogador mais próximo ignora mortos e monstros") {

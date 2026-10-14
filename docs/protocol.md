@@ -74,7 +74,7 @@ usa as flags apenas para desenhar e dar feedback de cursor — **nunca** para de
 ### Versão do protocolo
 
 `C_LOGIN` abre com um `uint16` de versão (**hoje 2**), conferido contra `kProtocolVersion` em
-`server/src/net/Protocol.hpp`. Sem ele, um client desatualizado só descobriria o problema como
+`server/src/protocol/Protocol.hpp`. Sem ele, um client desatualizado só descobriria o problema como
 "payload truncado", que não diz nada a quem está jogando. A versão sobe a cada mudança
 incompatível de pacote.
 

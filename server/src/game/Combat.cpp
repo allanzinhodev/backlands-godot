@@ -1,17 +1,12 @@
 #include "game/Combat.hpp"
 
-#include "game/Pathfinder.hpp"
+#include "core/Log.hpp"
+#include "game/Geometry.hpp"
+#include "game/Respawn.hpp"
 
 #include <algorithm>
-#include <cstdlib>
 
 namespace backlands::game {
-
-int cell_distance(Cell a, Cell b) noexcept {
-    const int dx = std::abs(static_cast<int>(a.x) - static_cast<int>(b.x));
-    const int dy = std::abs(static_cast<int>(a.y) - static_cast<int>(b.y));
-    return std::max(dx, dy);
-}
 
 bool in_attack_range(const Entity& attacker, const Entity& target) noexcept {
     return cell_distance(attacker.cell, target.cell) <= attacker.stats.attack_range;
@@ -50,8 +45,7 @@ DamageResult roll_attack(const Stats& attacker, const Stats& defender, Rng& rng)
     return result;
 }
 
-AttackRejection validate_attack(const Entity& attacker, const Entity* target,
-                                std::uint32_t now_ms) noexcept {
+AttackRejection validate_attack_target(const Entity& attacker, const Entity* target) noexcept {
     if (target == nullptr) {
         return AttackRejection::NoSuchTarget;
     }
@@ -63,6 +57,15 @@ AttackRejection validate_attack(const Entity& attacker, const Entity* target,
     }
     if (!target->alive()) {
         return AttackRejection::TargetDead;
+    }
+    return AttackRejection::None;
+}
+
+AttackRejection validate_attack(const Entity& attacker, const Entity* target,
+                                std::uint32_t now_ms) noexcept {
+    if (const AttackRejection rejection = validate_attack_target(attacker, target);
+        rejection != AttackRejection::None) {
+        return rejection;
     }
     if (!in_attack_range(attacker, *target)) {
         return AttackRejection::OutOfRange;
@@ -111,7 +114,8 @@ std::vector<CombatEvent> advance_combat(EntityRegistry& registry, std::uint32_t 
         }
 
         // Fora de alcance não é erro: no modelo do Ragnarok o atacante
-        // persegue. Quem move é o chamador (World), que tem o grid.
+        // persegue. Quem move é o chamador (World), que tem o grid. A
+        // aproximação em si é o advance_chasing, em game/Chase.cpp.
         if (!in_attack_range(*attacker, *target)) {
             continue;
         }
@@ -165,6 +169,44 @@ std::vector<CombatEvent> advance_combat(EntityRegistry& registry, std::uint32_t 
     }
 
     return events;
+}
+
+void react_to_combat(EntityRegistry& registry, const std::vector<CombatEvent>& events,
+                     std::uint32_t now_ms) {
+    for (const CombatEvent& event : events) {
+        switch (event.type) {
+            case CombatEvent::Type::Hit: {
+                // Monstro que apanha passa a revidar, inclusive os passivos:
+                // é o que diferencia "não me procure" de "não reaja a nada".
+                Entity* victim = registry.find(event.target);
+                if (victim != nullptr && victim->is_monster() && victim->alive()) {
+                    victim->brain.retaliate_against = event.source;
+                }
+                break;
+            }
+
+            case CombatEvent::Type::Died: {
+                Entity* dead = registry.find(event.target);
+                if (dead != nullptr) {
+                    schedule_respawn(*dead, now_ms);
+                    log::info("entidade {} ('{}') morreu para a entidade {}", dead->id,
+                              dead->name, event.source);
+                }
+
+                // Quem estava mirando no morto para de mirar, senão ficaria
+                // perseguindo um cadáver até ele renascer.
+                for (Entity* other : registry.all_mutable()) {
+                    if (other->combat.target == event.target) {
+                        other->combat.clear_target();
+                    }
+                }
+                break;
+            }
+
+            case CombatEvent::Type::Respawn:
+                break;
+        }
+    }
 }
 
 } // namespace backlands::game

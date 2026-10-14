@@ -1,7 +1,7 @@
-#include "net/Opcodes.hpp"
-#include "net/PacketReader.hpp"
-#include "net/PacketWriter.hpp"
-#include "net/Protocol.hpp"
+#include "protocol/Opcodes.hpp"
+#include "protocol/PacketReader.hpp"
+#include "protocol/PacketWriter.hpp"
+#include "protocol/Protocol.hpp"
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -11,7 +11,7 @@
 #include <string>
 #include <vector>
 
-using namespace backlands::net;
+using namespace backlands::protocol;
 
 namespace {
 
