@@ -5,6 +5,8 @@ Abra o dispositivo virtual no Device Manager do Android Studio. O preset
 Esse preset usa o renderizador Compatibility para evitar Vulkan por software
 no emulador; o renderizador desktop continua Mobile.
 O dispositivo criado para este teste se chama `Backlands_Test_API37`.
+Use aceleração gráfica Hardware/Host nas configurações do dispositivo.
+O driver SwiftShader do AVD anterior apresentou erros de limite de uniforms.
 
 Pré-requisitos: Godot 4.7.2 .NET, templates de exportação .NET da mesma
 versão, SDK Android e Java configurados em Editor Settings > Export > Android.
