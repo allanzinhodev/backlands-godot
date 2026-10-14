@@ -41,6 +41,24 @@ public sealed partial class Main : Node3D
     /// Se o botão direito está arrastando agora.
     private bool _rotatingCamera;
 
+    // --- Conjuro -----------------------------------------------------------
+
+    /// Quanto dura o conjuro das skills de teste.
+    ///
+    /// Vive no cliente porque a barra de skills é banco de provas: não há
+    /// protocolo de skill, e nada disto chega ao servidor ou aos outros
+    /// jogadores. Quando as skills existirem, quem manda neste número — e em
+    /// quando o efeito sai — é o servidor.
+    private const double CastSeconds = 0.5;
+
+    /// Relógio local, só para prazos de conjuro.
+    private double _now;
+
+    private SkillSlot _castSlot;
+    private int _castSlotIndex = -1;
+    private uint _castTargetId;
+    private double _castEndsAt;
+
     // `size` de uma câmera ortogonal é a extensão VERTICAL em unidades, e
     // 1 unidade = 1 tile. 15 mostra 15 tiles de altura de tela — o chão,
     // encurtado pela inclinação de 45 graus, aparece em ~21 tiles.
@@ -462,12 +480,6 @@ public sealed partial class Main : Node3D
             GD.Print($"[teste] pedindo caminhada para ({_autoWalk.Value.X}, {_autoWalk.Value.Y})");
             _session.RequestWalk(_autoWalk.Value.X, _autoWalk.Value.Y);
         }
-        if (_autoCastSlot >= 1 && _autoCastSlot <= SkillBar.Slots.Length)
-        {
-            var index = _autoCastSlot - 1;
-            OnSkillTriggered(index, SkillBar.Slots[index]);
-        }
-
         if (_screenshotPath != null)
         {
             // Tempo para o mapa e os sprites desenharem e, num teste com vários
@@ -483,7 +495,7 @@ public sealed partial class Main : Node3D
 
         if (_autoAttackNearest && entity.Kind == EntityKind.Monster && _targetId == 0)
         {
-            _targetId = entity.Id;
+            SelectTarget(entity.Id);
             GD.Print($"[teste] atacando '{entity.Name}' (entidade {entity.Id}) "
                 + $"em ({entity.CellX}, {entity.CellY})");
             _session.RequestAttack(entity.Id);
@@ -495,6 +507,12 @@ public sealed partial class Main : Node3D
         if (_views.Remove(entity.Id, out var view))
         {
             view.QueueFree();
+        }
+        // Antes de mexer no alvo: SelectTarget(0) procura a view antiga para
+        // apagar o anel, e ela já saiu do dicionário — não há o que apagar.
+        if (entity.Id == _targetId)
+        {
+            SelectTarget(0);
         }
         UpdateHud();
     }
@@ -566,10 +584,11 @@ public sealed partial class Main : Node3D
         {
             _statusLabel.Text = "Você morreu. Renascendo...";
             _statusLabel.Visible = true;
+            CancelCast("morreu");
         }
         if (dead.Id == _targetId)
         {
-            _targetId = 0;
+            SelectTarget(0);
         }
         GD.Print($"[teste] {dead.Name} morreu (morto por {killer?.Name ?? "?"})");
     }
@@ -641,9 +660,11 @@ public sealed partial class Main : Node3D
         }
 
         var hp = local == null ? "-" : $"{local.Hp}/{local.MaxHp}";
+        var target = _targetId == 0 ? "nenhum" : world.Find(_targetId)?.Name ?? "nenhum";
         _hudLabel.Text = $"{world.MapName}  |  célula {cell}  |  HP {hp}  |  "
-            + $"{world.Entities.Count} entidade(s)  |  clique no chão para andar, "
-            + "no inimigo para atacar";
+            + $"{world.Entities.Count} entidade(s)  |  alvo: {target}\n"
+            + "clique no chão para andar, no inimigo para atacar e selecionar  |  "
+            + "F1-F12 conjuram no alvo  |  botão direito gira a câmera";
     }
 
     /// <summary>
@@ -656,22 +677,175 @@ public sealed partial class Main : Node3D
     private void OnSkillTriggered(int index, SkillSlot slot)
     {
         var local = _session.World.Local;
-        if (local == null || !_views.TryGetValue(local.Id, out var view))
+        if (local == null || !_views.TryGetValue(local.Id, out var casterView))
         {
             return;
         }
 
-        var effect = VfxLibrary.Load(slot.VfxId);
-        if (effect == null)
+        if (VfxLibrary.Load(slot.VfxId) == null)
         {
             GD.Print($"[skills] F{index + 1} ({slot.Label}): efeito '{slot.VfxId}' indisponível");
             return;
         }
 
-        // Nasce na posição INTERPOLADA do personagem, não na célula: durante
-        // uma caminhada a célula já é o destino, e o efeito apareceria à frente.
-        AddChild(VfxPlayer.Create(effect, view.Position));
-        GD.Print($"[teste] F{index + 1} -> {slot.Label} ({slot.VfxId})");
+        // Alvo conferido no INÍCIO; o fim do conjuro confere de novo, porque meio
+        // segundo é tempo bastante para o alvo morrer ou sumir.
+        var target = LivingTarget();
+        if (target == null)
+        {
+            _statusLabel.Text = "Selecione um alvo: clique no inimigo.";
+            _statusLabel.Visible = true;
+            return;
+        }
+
+        _statusLabel.Visible = false;
+        _castSlot = slot;
+        _castSlotIndex = index;
+        _castTargetId = _targetId;
+        _castEndsAt = _now + CastSeconds;
+
+        casterView.BeginCast(FacingTowards(casterView.Position, target.Position), CastSeconds);
+        GD.Print($"[teste] F{index + 1} conjurando {slot.Label} em {_targetId}");
+    }
+
+    /// A view do alvo atual, ou null se não há alvo, ele sumiu ou morreu.
+    private EntityView? LivingTarget()
+    {
+        if (_targetId == 0 || !_views.TryGetValue(_targetId, out var view))
+        {
+            return null;
+        }
+        var entity = _session.World.Find(_targetId);
+        return entity is { Alive: true } ? view : null;
+    }
+
+    /// Qual das 8 direções lógicas mais aponta de `from` para `to`.
+    private static Direction FacingTowards(Vector3 from, Vector3 to)
+    {
+        var delta = to - from;
+        var best = Direction.SouthEast;
+        var bestDot = float.NegativeInfinity;
+
+        // Comparar com as 8 direções reais evita reinventar a conversão de
+        // ângulo para índice — e evita errar a origem e o sentido do enum.
+        for (var d = 0; d < 8; d++)
+        {
+            var step = WorldState.DirectionDeltas[d];
+            var candidate = new Vector3(step.X, 0, step.Y).Normalized();
+            var dot = candidate.Dot(new Vector3(delta.X, 0, delta.Z).Normalized());
+            if (dot > bestDot)
+            {
+                bestDot = dot;
+                best = (Direction)d;
+            }
+        }
+
+        return best;
+    }
+
+    /// Interrompe o conjuro em andamento, se houver.
+    private void CancelCast(string reason)
+    {
+        if (_castSlotIndex < 0)
+        {
+            return;
+        }
+
+        var local = _session.World.Local;
+        if (local != null && _views.TryGetValue(local.Id, out var view))
+        {
+            view.EndCast();
+        }
+
+        GD.Print($"[teste] conjuro de {_castSlot.Label} interrompido: {reason}");
+        _castSlotIndex = -1;
+        _castTargetId = 0;
+    }
+
+    /// Leva o conjuro até o fim e solta o efeito NO ALVO.
+    private void AdvanceCast()
+    {
+        if (_castSlotIndex < 0)
+        {
+            return;
+        }
+
+        if (_targetId != _castTargetId)
+        {
+            CancelCast("alvo trocado");
+            return;
+        }
+
+        var target = LivingTarget();
+        if (target == null)
+        {
+            CancelCast("alvo sumiu");
+            return;
+        }
+
+        if (_now < _castEndsAt)
+        {
+            return;
+        }
+
+        var effect = VfxLibrary.Load(_castSlot.VfxId);
+        if (effect != null)
+        {
+            // Posição INTERPOLADA do alvo, não a célula: se ele estiver andando,
+            // a célula já é o destino e o efeito sairia à frente dele.
+            AddChild(VfxPlayer.Create(effect, target.Position));
+        }
+
+        GD.Print($"[teste] F{_castSlotIndex + 1} -> {_castSlot.Label} em {_castTargetId}");
+
+        var local = _session.World.Local;
+        if (local != null && _views.TryGetValue(local.Id, out var view))
+        {
+            view.EndCast();
+        }
+        _castSlotIndex = -1;
+        _castTargetId = 0;
+    }
+
+    /// <summary>
+    /// Dispara o slot de --cast assim que houver um alvo vivo.
+    ///
+    /// Esperar o alvo, em vez de conjurar ao entrar no mundo: agora a skill
+    /// exige alvo, e os monstros chegam depois do próprio jogador. Dispara uma
+    /// vez só.
+    /// </summary>
+    private void AdvanceAutoCast()
+    {
+        if (_autoCastSlot < 1 || _autoCastSlot > SkillBar.Slots.Length
+            || LivingTarget() == null)
+        {
+            return;
+        }
+
+        var index = _autoCastSlot - 1;
+        _autoCastSlot = -1;
+        OnSkillTriggered(index, SkillBar.Slots[index]);
+    }
+
+    /// Marca a entidade escolhida e apaga a marca da anterior.
+    private void SelectTarget(uint entityId)
+    {
+        if (_targetId == entityId)
+        {
+            return;
+        }
+
+        if (_targetId != 0 && _views.TryGetValue(_targetId, out var previous))
+        {
+            previous.SetTargeted(false);
+        }
+
+        _targetId = entityId;
+
+        if (_targetId != 0 && _views.TryGetValue(_targetId, out var current))
+        {
+            current.SetTargeted(true);
+        }
     }
 
     // --- Entrada -----------------------------------------------------------
@@ -733,9 +907,16 @@ public sealed partial class Main : Node3D
         var targetId = FindEntityAtCell(cell.Value.X, cell.Value.Y);
         if (targetId != 0)
         {
+            // Seleciona E ataca: a seleção é o que as skills precisam, e trocar
+            // o clique por "só seleciona" tiraria a única forma de atacar.
+            SelectTarget(targetId);
+            CancelCast("atacou");
             _session.RequestAttack(targetId);
             return;
         }
+
+        // Andar cancela o conjuro, como no Ragnarok.
+        CancelCast("andou");
 
         // Manda só o DESTINO. Quem decide o caminho — e se ele existe — é o
         // servidor; aqui nem checamos se a célula é caminhável.
@@ -768,6 +949,10 @@ public sealed partial class Main : Node3D
 
     public override void _Process(double delta)
     {
+        _now += delta;
+        AdvanceCast();
+        AdvanceAutoCast();
+
         var local = _session.World.Local;
         if (local != null && _views.TryGetValue(local.Id, out var view))
         {

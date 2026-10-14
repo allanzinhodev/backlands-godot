@@ -116,12 +116,36 @@ regra. Quando as skills existirem, quem define a duração é o servidor.
 
 ## A barra de habilidades
 
-`client/ui/SkillBar.cs` é um **banco de provas de arte**, não o sistema de
-skills: 12 slots acionados por F1–F12 ou clique, que tocam o efeito
-**localmente**, sem passar pelo servidor. Nenhum outro jogador vê.
+`client/ui/SkillBar.cs` é um **banco de provas**, não o sistema de skills: 12
+slots acionados por F1–F12 ou clique. Tudo acontece **no cliente**, sem passar
+pelo servidor, e nenhum outro jogador vê.
 
-Quando as skills existirem de verdade, a tecla vira um pedido ao servidor e o
-efeito só toca quando ele confirmar — como já acontece com o ataque hoje.
+### Alvo e conjuro
+
+O fluxo imita o do Ragnarok:
+
+1. **Selecionar** — clicar num inimigo o seleciona *e* ataca. Selecionar e
+   atacar juntos, porque trocar o clique por "só seleciona" tiraria a única
+   forma de atacar que existe. O alvo ganha um **anel amarelo no chão**, deitado
+   no piso e não billboard: um anel billboard viraria argola em pé.
+2. **Conjurar** — F1–F12 inicia **meio segundo** de conjuro. O personagem entra
+   na pose `Cast` (que estava carregada das folhas e nunca era usada) virado
+   para o alvo, com uma **barra** acima da de vida.
+3. **Soltar** — ao fim, o efeito sai na posição **interpolada do alvo**, não na
+   célula: se ele estiver andando, a célula já é o destino e o efeito sairia à
+   frente dele.
+
+Cancela o conjuro: **andar**, **atacar**, **trocar de alvo**, o **alvo morrer ou
+sumir**, e **morrer**. O alvo é conferido duas vezes — no início e no fim —
+porque meio segundo é tempo bastante para ele deixar de existir.
+
+### A mentira que isto conta
+
+O conjuro é só aparência. Não há dano, não há alcance, não há interrupção por
+tomar dano, e o servidor não sabe de nada. Quando as skills existirem de
+verdade, a tecla vira um **pedido** e quem decide duração, alcance, dano e o
+momento do efeito é o servidor — como já acontece com o ataque hoje. O que esta
+versão entrega é o **ritmo**: dá para sentir se meio segundo é pouco ou demais.
 
 Os ícones vêm de `icons/spell_icons.png`, uma folha de **14 colunas por 10
 linhas**. A célula não é inteira (1536 ÷ 14), então a região de cada ícone sai
@@ -131,10 +155,14 @@ acumularia erro e cortaria a última coluna.
 ## Conferindo um efeito
 
 ```powershell
-# aciona o slot N ao entrar no mundo e fotografa, sempre no mesmo quadro
-godot --path . -- --autologin=Teste --cast=1 --freeze-animations `
+# seleciona o inimigo mais próximo, conjura o slot N e fotografa no mesmo quadro
+godot --path . -- --autologin=Teste --attack-nearest --cast=1 --freeze-animations `
       --screenshot=.playtest/cast.png --screenshot-delay=90
 ```
+
+`--attack-nearest` é obrigatório: a skill exige alvo, e sem ele o conjuro nem
+começa. O `--cast` espera o alvo aparecer em vez de disparar ao entrar no mundo,
+porque os monstros chegam depois do próprio jogador.
 
 Use **sempre `--freeze-animations`**. Sem ele o quadro fotografado depende de
 quanto a máquina demorou para compilar shader na partida: o atraso é contado em

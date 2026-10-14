@@ -24,6 +24,9 @@ public sealed partial class EntityView : Node3D
     /// parar, e cada emenda de trecho daria um quadro de `idle`.
     private const double WalkHysteresisSeconds = 0.2;
 
+    /// Altura da barra de conjuro: acima da de vida, para as duas conviverem.
+    private const float CastBarHeight = BodyHeight * 1.34f;
+
     /// Quanto tempo cada quadro da caminhada fica na tela, em milissegundos.
     ///
     /// Fixo, e não mais casado com a velocidade de andar. O ritmo casado dava
@@ -42,6 +45,9 @@ public sealed partial class EntityView : Node3D
     private Label3D _nameplate = null!;
     private Sprite3D _hpBarBack = null!;
     private Sprite3D _hpBarFill = null!;
+    private Sprite3D _castBarBack = null!;
+    private Sprite3D _castBarFill = null!;
+    private Sprite3D _targetRing = null!;
     private Color _nameplateColor = Colors.White;
 
     private SpriteSheet? _sheet;
@@ -56,6 +62,10 @@ public sealed partial class EntityView : Node3D
     private double _walkHoldUntil;
     private double _now;
     private bool _dead;
+
+    // Conjuro em andamento: começo e fim, para a barra saber a fração.
+    private double _castStartedAt;
+    private double _castUntil;
 
     // O que já está no sprite, para ApplyPose só mexer nele quando mudar.
     private SpriteState _appliedState;
@@ -144,8 +154,16 @@ public sealed partial class EntityView : Node3D
         };
         AddChild(_fallbackSprite);
 
-        _hpBarBack = CreateBar(new Color(0.08f, 0.08f, 0.10f), 1.0f, 0.0f);
-        _hpBarFill = CreateBar(new Color(0.85f, 0.25f, 0.25f), 0.98f, 0.001f);
+        _hpBarBack = CreateBar(new Color(0.08f, 0.08f, 0.10f), 1.0f, 0.0f, BodyHeight * 1.22f);
+        _hpBarFill = CreateBar(new Color(0.85f, 0.25f, 0.25f), 0.98f, 0.001f, BodyHeight * 1.22f);
+
+        // Acima da barra de vida, e escondida até alguém conjurar.
+        _castBarBack = CreateBar(new Color(0.08f, 0.08f, 0.10f), 1.0f, 0.0f, CastBarHeight);
+        _castBarFill = CreateBar(new Color(0.45f, 0.75f, 1.0f), 0.98f, 0.001f, CastBarHeight);
+        _castBarBack.Visible = false;
+        _castBarFill.Visible = false;
+
+        _targetRing = CreateTargetRing();
 
         _nameplate = new Label3D
         {
@@ -163,19 +181,19 @@ public sealed partial class EntityView : Node3D
         AddChild(_nameplate);
     }
 
-    private Sprite3D CreateBar(Color color, float width, float zOffset)
+    private Sprite3D CreateBar(Color color, float width, float zOffset, float height)
     {
         var image = Image.CreateEmpty(1, 1, false, Image.Format.Rgba8);
         image.SetPixel(0, 0, color);
 
         var bar = new Sprite3D
         {
-            Name = zOffset > 0.0f ? "HpFill" : "HpBack",
+            Name = zOffset > 0.0f ? "BarFill" : "BarBack",
             Texture = ImageTexture.CreateFromImage(image),
             Billboard = BaseMaterial3D.BillboardModeEnum.Enabled,
             TextureFilter = BaseMaterial3D.TextureFilterEnum.Nearest,
             PixelSize = 1.0f,
-            Position = new Vector3(0, BodyHeight * 1.22f, zOffset),
+            Position = new Vector3(0, height, zOffset),
             Scale = new Vector3(width, 0.2f, 1.0f),
             NoDepthTest = true,
             CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
@@ -183,6 +201,55 @@ public sealed partial class EntityView : Node3D
         AddChild(bar);
         return bar;
     }
+
+    /// <summary>
+    /// Anel no chão que marca a entidade selecionada.
+    ///
+    /// Deitado no plano do piso, e não billboard: um anel billboard viraria uma
+    /// argola em pé na frente do personagem. Girar a câmera não o afeta, porque
+    /// ele vive no chão como o resto do mapa.
+    /// </summary>
+    private Sprite3D CreateTargetRing()
+    {
+        const int size = 64;
+        var image = Image.CreateEmpty(size, size, false, Image.Format.Rgba8);
+        image.Fill(new Color(0, 0, 0, 0));
+
+        var center = (size - 1) / 2.0f;
+        for (var y = 0; y < size; y++)
+        {
+            for (var x = 0; x < size; x++)
+            {
+                var distance = new Vector2(x - center, y - center).Length() / center;
+                // Anel fino na borda: cheio demais esconderia o chão e brigaria
+                // com os efeitos de área, que também são desenhados no piso.
+                if (distance is > 0.80f and < 0.98f)
+                {
+                    image.SetPixel(x, y, new Color(1.0f, 0.85f, 0.25f, 0.9f));
+                }
+            }
+        }
+
+        var ring = new Sprite3D
+        {
+            Name = "TargetRing",
+            Texture = ImageTexture.CreateFromImage(image),
+            Billboard = BaseMaterial3D.BillboardModeEnum.Disabled,
+            TextureFilter = BaseMaterial3D.TextureFilterEnum.Nearest,
+            Shaded = false,
+            PixelSize = 1.4f / size,
+            RotationDegrees = new Vector3(-90, 0, 0),
+            // Um fio acima do piso, para não brigar com ele pelo mesmo pixel.
+            Position = new Vector3(0, 0.02f, 0),
+            CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
+            Visible = false,
+        };
+        AddChild(ring);
+        return ring;
+    }
+
+    /// Liga ou desliga o anel de alvo.
+    public void SetTargeted(bool targeted) => _targetRing.Visible = targeted && !_dead;
 
     // --- Vida e morte ------------------------------------------------------
 
@@ -211,6 +278,10 @@ public sealed partial class EntityView : Node3D
             _waypoints.Clear();
             _hpBarBack.Visible = false;
             _hpBarFill.Visible = false;
+            // Morrer leva junto conjuro e seleção: cadáver não conjura, e um
+            // anel sobre o corpo faria o jogador insistir num alvo que já era.
+            EndCast();
+            _targetRing.Visible = false;
             EnterState(SpriteState.Dead);
         }
         else
@@ -316,12 +387,69 @@ public sealed partial class EntityView : Node3D
     /// Esquiva: o servidor manda dano 0 quando o golpe erra.
     public void PlayEvade(int motionMs)
     {
-        if (_dead || _state == SpriteState.Attack)
+        // Conjurando, a esquiva é engolida: ela duraria menos que um piscar e o
+        // sprite ia e voltava da pose de conjuro no meio da barra.
+        if (_dead || _state == SpriteState.Attack || Casting)
         {
             return;
         }
         _oneShotUntil = _now + System.Math.Max(motionMs, 1) / 1000.0;
         EnterState(SpriteState.Evade);
+    }
+
+    /// <summary>
+    /// Começa um conjuro: segura a pose de Cast e mostra a barra até o prazo.
+    ///
+    /// Quem decide se o conjuro completa, falha ou é cancelado é quem chamou —
+    /// aqui é só a aparência. Como tudo que anima, o controle é por PRAZO e não
+    /// pelo fim da animação: a pose de Cast tem um quadro só e nunca terminaria.
+    /// </summary>
+    public void BeginCast(Direction facing, double seconds)
+    {
+        if (_dead)
+        {
+            return;
+        }
+
+        _renderFacing = facing;
+        _castStartedAt = _now;
+        _castUntil = _now + System.Math.Max(seconds, 0.001);
+        // O golpe em andamento não pode segurar a pose por cima do conjuro.
+        _oneShotUntil = 0;
+        EnterState(SpriteState.Cast);
+        ApplyPose();
+    }
+
+    /// Encerra o conjuro, tendo ele completado ou não.
+    public void EndCast()
+    {
+        _castUntil = 0;
+        _castBarBack.Visible = false;
+        _castBarFill.Visible = false;
+    }
+
+    public bool Casting => _castUntil > _now;
+
+    private void UpdateCastBar()
+    {
+        if (!Casting)
+        {
+            if (_castBarBack.Visible)
+            {
+                EndCast();
+            }
+            return;
+        }
+
+        const float full = 0.98f;
+        var total = _castUntil - _castStartedAt;
+        var fraction = (float)Mathf.Clamp((_now - _castStartedAt) / total, 0.0, 1.0);
+        var width = full * fraction;
+
+        _castBarBack.Visible = true;
+        _castBarFill.Visible = fraction > 0.0f;
+        _castBarFill.Scale = new Vector3(Mathf.Max(width, 0.0001f), 0.2f, 1.0f);
+        _castBarFill.Position = new Vector3(-(full - width) / 2.0f, CastBarHeight, 0.001f);
     }
 
     private void EnterState(SpriteState state)
@@ -416,6 +544,7 @@ public sealed partial class EntityView : Node3D
 
         AdvanceMovement(delta);
         AdvanceState();
+        UpdateCastBar();
         ApplyPose();
     }
 
@@ -454,7 +583,7 @@ public sealed partial class EntityView : Node3D
         }
     }
 
-    /// Prioridade: dead > attack/evade > walk > idle.
+    /// Prioridade: dead > attack/evade > cast > walk > idle.
     private void AdvanceState()
     {
         if (_dead)
@@ -469,6 +598,14 @@ public sealed partial class EntityView : Node3D
                 return;
             }
             _oneShotUntil = 0;
+        }
+
+        // Acima de walk: no Ragnarok não se anda conjurando, e quem decide
+        // cancelar por movimento é quem comanda o conjuro, não esta máquina.
+        if (Casting)
+        {
+            EnterState(SpriteState.Cast);
+            return;
         }
 
         if (_waypoints.Count > 0)
