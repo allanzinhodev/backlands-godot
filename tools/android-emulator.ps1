@@ -1,7 +1,7 @@
 param(
     [string]$GodotExe = "$env:USERPROFILE\Downloads\Godot_v4.7.2-stable_mono_win64\Godot_v4.7.2-stable_mono_win64_console.exe",
     [string]$AndroidSdk = "$env:LOCALAPPDATA\Android\Sdk",
-    [string]$Device = 'emulator-5554'
+    [string]$Device = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -20,6 +20,11 @@ function Invoke-Checked {
 Push-Location $repo
 try {
     New-Item -ItemType Directory -Force (Split-Path -Parent $apk) | Out-Null
+    if ([string]::IsNullOrWhiteSpace($Device)) {
+        $devices = @(& $adb devices | Where-Object { $_ -match '^emulator-\d+\s+device$' } | ForEach-Object { ($_ -split '\s+')[0] })
+        if ($devices.Count -ne 1) { throw 'Inicie um emulador ou indique o dispositivo com -Device emulator-5556.' }
+        $Device = $devices[0]
+    }
     Invoke-Checked $adb @('-s', $Device, 'get-state')
     Invoke-Checked $GodotExe @('--headless', '--path', $repo, '--import')
     Invoke-Checked $GodotExe @('--headless', '--path', $repo, '--export-debug', 'Android Emulator', $apk)
