@@ -46,6 +46,29 @@ public static class SpriteLayout
     /// Cor tratada como fundo. Não é alpha no arquivo: é cor-chave.
     public static readonly Godot.Color BackgroundColor = Godot.Color.FromHtml("9c8b93");
 
+    /// <summary>
+    /// Quanto preto é misturado na borda INTERNA de cada quadro, para o
+    /// personagem ter contorno de 1 pixel.
+    ///
+    /// O contorno é assado na arte no carregamento, em pixels DA FOLHA, e não
+    /// desenhado por shader: assim ele tem 1 pixel de arte de espessura de
+    /// verdade, e cresce junto com o personagem na ampliação em vez de virar um
+    /// fio fino de 1 pixel de tela. É o mesmo motivo de a arte ser filtrada com
+    /// Nearest.
+    ///
+    /// É preto MISTURADO, não preto com alpha 0,5: o sprite é desenhado com
+    /// corte de alpha em 0,5 (AlphaCut.Discard), onde alpha é binário — meio
+    /// alpha não existe, viraria opaco ou sumiria. Misturar dá a mesma leitura
+    /// de "preto a 50%" que um editor de imagem produz, sem depender de
+    /// transparência que este modo de desenho não tem.
+    /// </summary>
+    public const float OutlineBlend = 0.5f;
+
+    /// Abaixo deste alpha o pixel não é desenhado, porque o corte do sprite é
+    /// em 0,5. O contorno usa o MESMO limiar, senão ele seria calculado contra
+    /// pixels que o jogador nunca vê.
+    public const float OutlineSolidAlpha = 0.5f;
+
     /// Altura do personagem em unidades de mundo (1 unidade = 1 célula).
     /// Tudo que flutua sobre ele (nome, barra de vida, dano) é ancorado a
     /// partir daqui, então mexer só neste número reposiciona o resto junto.
