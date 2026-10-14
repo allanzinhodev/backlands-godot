@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using Backlands.Art;
 using Backlands.Net;
 using Godot;
 
@@ -7,29 +8,67 @@ namespace Backlands.Game;
 /// <summary>
 /// O nó visual de uma entidade: um sprite 2D billboard dentro do mundo 3D.
 ///
-/// A posição autoritativa é sempre a célula que o servidor mandou. Este nó
-/// apenas interpola entre células para o movimento não ficar aos saltos —
-/// ele nunca decide para onde a entidade vai.
+/// A posição e a direção autoritativas são sempre as que o servidor mandou.
+/// Este nó só interpola entre células e escolhe a pose — nunca decide para
+/// onde a entidade vai nem para onde ela encara.
 /// </summary>
 public sealed partial class EntityView : Node3D
 {
-    // Altura do sprite em pixels. O pivô vai nos pés com offset = altura/2,
-    // e no Sprite3D o +Y do offset sobe (ao contrário do Sprite2D).
-    private const int SpriteHeightPx = 32;
-    private const int SpriteWidthPx = 20;
+    /// Altura do personagem em unidades de mundo (1 unidade = 1 célula).
+    /// Tudo que flutua sobre ele é ancorado a partir daqui, em vez de números
+    /// soltos afinados para um tamanho de sprite específico.
+    private const float BodyHeight = SpriteLayout.FrameHeight * SpriteLayout.PixelSize;
 
-    private readonly Queue<Vector3> _waypoints = new();
-    private Color _nameplateColor = Colors.White;
+    /// Tempo que o estado `walk` segura antes de voltar para `idle`. Sem esta
+    /// folga há tremor garantido: a perseguição só recalcula a rota depois de
+    /// parar, e cada emenda de trecho daria um quadro de `idle`.
+    private const double WalkHysteresisSeconds = 0.2;
 
-    private Sprite3D _sprite = null!;
+    /// Quadros por segundo da caminhada.
+    ///
+    /// Fixo, e não mais casado com a velocidade de andar. O ritmo casado dava
+    /// 13,3 fps no jogador (150 ms/célula), 7,1 no lobo e 5 no slime — cada um
+    /// com uma cadência, e todas corridas demais para duas poses.
+    ///
+    /// O preço de fixar é o pé patinar: a 2 fps o ciclo leva 1 s e o jogador
+    /// atravessa quase 7 células nesse tempo, então a passada não acompanha
+    /// mais a distância percorrida.
+    private const float WalkFps = 2.0f;
+
+    private readonly Queue<(Vector3 Position, Direction Facing)> _waypoints = new();
+
+    private AnimatedSprite3D _sprite = null!;
+    private Sprite3D _fallbackSprite = null!;
     private Label3D _nameplate = null!;
     private Sprite3D _hpBarBack = null!;
     private Sprite3D _hpBarFill = null!;
+    private Color _nameplateColor = Colors.White;
+
+    private SpriteSheet? _sheet;
+    private SpriteState _state = SpriteState.Idle;
+    private Direction _renderFacing = Direction.SouthEast;
     private float _speedUnitsPerSecond = 1000.0f / 150.0f;
+    private int _speedMsPerCell = 150;
+
+    // Prazos em vez do sinal AnimationFinished: o sinal chega um quadro
+    // atrasado e corre com uma caminhada que comece no meio do golpe.
+    private double _oneShotUntil;
+    private double _walkHoldUntil;
+    private double _now;
+    private bool _dead;
+
+    // O que já está no sprite, para ApplyPose só mexer nele quando mudar.
+    private SpriteState _appliedState;
+    private Direction _appliedFacing;
+    private bool _applied;
 
     public uint EntityId { get; private set; }
 
     public EntityKind Kind { get; private set; }
+
+    /// Trava a animação para a captura de tela seguir comparável entre
+    /// execuções do playtest.
+    public static bool FreezeAnimations { get; set; }
 
     public static EntityView Create(RemoteEntity entity, bool isLocal)
     {
@@ -42,41 +81,68 @@ public sealed partial class EntityView : Node3D
         };
         view.BuildVisual(entity, isLocal);
         view.UpdateHealth(entity);
+
+        // Estado inicial vindo da vida: quem entra no meio da partida não pode
+        // ver cadáver em pé.
+        view._renderFacing = entity.Facing;
+        view.SetDead(!entity.Alive);
+        view.ApplyPose();
         return view;
     }
 
     private void BuildVisual(RemoteEntity entity, bool isLocal)
     {
-        _sprite = new Sprite3D
+        _sheet = SpriteSheet.Load(entity.Sprite);
+
+        _sprite = new AnimatedSprite3D
         {
             Name = "Sprite",
-            Texture = CreatePlaceholderTexture(entity.Id, isLocal, entity.Kind),
-
-            // FIXED_Y e não ENABLED: billboard completo inclinaria o sprite
-            // para encarar a câmera inclinada, e o personagem ficaria deitado
-            // para trás em vez de em pé. FIXED_Y gira só no eixo vertical,
-            // que é o comportamento do Ragnarok.
-            Billboard = BaseMaterial3D.BillboardModeEnum.FixedY,
-
-            // Pivô nos pés: offset.y POSITIVO sobe o sprite no 3D.
-            Offset = new Vector2(0, SpriteHeightPx / 2.0f),
-
-            // Sem isto o Godot usa linear com mipmaps e a arte fica borrada.
+            // ENABLED e não FIXED_Y: o billboard completo substitui a base do
+            // nó pela da câmera, então o quadro é desenhado inteiro, de frente.
+            // FIXED_Y manteria o quadro vertical no MUNDO, e a câmera a -45° o
+            // achataria em cos(45°) — foi o bug do personagem amassado.
+            Billboard = BaseMaterial3D.BillboardModeEnum.Enabled,
+            // Pivô nos pés: offset.y POSITIVO sobe o sprite.
+            //
+            // Sob billboard o Y do offset é o de cima da TELA, não o do mundo:
+            // os pés caem na origem do nó em projeção. É por isso que levantar
+            // um efeito pelo offset dele acompanha o personagem em qualquer
+            // ângulo de câmera, e levantar pela posição do nó não acompanharia.
+            Offset = new Vector2(0, SpriteLayout.FrameHeight / 2.0f),
             TextureFilter = BaseMaterial3D.TextureFilterEnum.Nearest,
-
-            // alpha_cut DISCARD faz o sprite escrever profundidade e projetar
-            // sombra; com o default ele não projeta sombra nenhuma.
             AlphaCut = SpriteBase3D.AlphaCutMode.Discard,
-
-            // 32 px de altura * 0.05 = 1.6 unidades: um pouco mais alto que
-            // um tile, como um personagem de Ragnarok em relação ao chão.
-            PixelSize = 0.05f,
+            PixelSize = SpriteLayout.PixelSize,
+            // O quadro é billboard para a CÂMERA, não para a luz, então a
+            // sombra que ele projetaria é geometricamente sem sentido e treme
+            // conforme a câmera gira.
+            CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
+            Visible = _sheet != null,
         };
+        if (_sheet != null)
+        {
+            _sprite.SpriteFrames = _sheet.Frames;
+        }
         AddChild(_sprite);
 
-        // Barra de vida: dois sprites simples, um fundo escuro e um
-        // preenchimento que encolhe. Billboard igual ao do personagem, para
-        // sempre encarar a câmera.
+        // Sem arte na pasta, cai no bonequinho gerado em código: o jogo nunca
+        // deixa de rodar — e o playtest automatizado, única verificação ponta a
+        // ponta do repositório, continua verde.
+        _fallbackSprite = new Sprite3D
+        {
+            Name = "SpriteFallback",
+            Texture = CreatePlaceholderTexture(entity.Id, isLocal, entity.Kind),
+            Billboard = BaseMaterial3D.BillboardModeEnum.Enabled,
+            Offset = new Vector2(0, 16),
+            TextureFilter = BaseMaterial3D.TextureFilterEnum.Nearest,
+            AlphaCut = SpriteBase3D.AlphaCutMode.Discard,
+            // Mesma altura de mundo do sprite real, para o placeholder nao
+            // mudar de tamanho quando a arte entrar. A textura tem 32 px.
+            PixelSize = SpriteLayout.BodyHeightUnits / 32.0f,
+            CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
+            Visible = _sheet == null,
+        };
+        AddChild(_fallbackSprite);
+
         _hpBarBack = CreateBar(new Color(0.08f, 0.08f, 0.10f), 1.0f, 0.0f);
         _hpBarFill = CreateBar(new Color(0.85f, 0.25f, 0.25f), 0.98f, 0.001f);
 
@@ -84,8 +150,8 @@ public sealed partial class EntityView : Node3D
         {
             Name = "Nameplate",
             Text = entity.Name,
-            Position = new Vector3(0, 2.3f, 0),
-            Billboard = BaseMaterial3D.BillboardModeEnum.FixedY,
+            Position = new Vector3(0, BodyHeight * 1.45f, 0),
+            Billboard = BaseMaterial3D.BillboardModeEnum.Enabled,
             FontSize = 48,
             PixelSize = 0.006f,
             Modulate = isLocal ? new Color(1.0f, 0.95f, 0.5f) : Colors.White,
@@ -105,21 +171,20 @@ public sealed partial class EntityView : Node3D
         {
             Name = zOffset > 0.0f ? "HpFill" : "HpBack",
             Texture = ImageTexture.CreateFromImage(image),
-            Billboard = BaseMaterial3D.BillboardModeEnum.FixedY,
+            Billboard = BaseMaterial3D.BillboardModeEnum.Enabled,
             TextureFilter = BaseMaterial3D.TextureFilterEnum.Nearest,
             PixelSize = 1.0f,
-            Position = new Vector3(0, 1.95f, zOffset),
+            Position = new Vector3(0, BodyHeight * 1.22f, zOffset),
             Scale = new Vector3(width, 0.2f, 1.0f),
             NoDepthTest = true,
-            // Sem sombra: é indicador de interface, não objeto do mundo.
             CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
         };
         AddChild(bar);
         return bar;
     }
 
-    /// Ajusta a barra de vida. O preenchimento encolhe a partir da esquerda,
-    /// por isso o deslocamento acompanha a escala.
+    // --- Vida e morte ------------------------------------------------------
+
     public void UpdateHealth(RemoteEntity entity)
     {
         const float full = 0.98f;
@@ -127,36 +192,46 @@ public sealed partial class EntityView : Node3D
         var width = full * fraction;
 
         _hpBarFill.Scale = new Vector3(Mathf.Max(width, 0.0001f), 0.2f, 1.0f);
-        _hpBarFill.Position = new Vector3(-(full - width) / 2.0f, 1.95f, 0.001f);
+        _hpBarFill.Position = new Vector3(-(full - width) / 2.0f, BodyHeight * 1.22f, 0.001f);
 
-        // Mostrar a barra de todo mundo o tempo todo poluiria a tela: jogador
-        // com vida cheia esconde, monstro mostra sempre (é alvo).
-        var show = fraction < 1.0f || Kind == EntityKind.Monster;
+        var show = !_dead && (fraction < 1.0f || Kind == EntityKind.Monster);
         _hpBarBack.Visible = show;
         _hpBarFill.Visible = show && fraction > 0.0f;
     }
 
-    /// Entidade morta fica apagada, mas o nó continua: ela pode renascer com
-    /// o mesmo id.
+    /// Entidade morta mantém o nó, porque pode renascer com o mesmo id.
     public void SetDead(bool dead)
     {
-        _sprite.Modulate = dead ? new Color(1, 1, 1, 0.25f) : Colors.White;
+        _dead = dead;
         _nameplate.Modulate = dead ? new Color(0.6f, 0.6f, 0.6f) : _nameplateColor;
+
         if (dead)
         {
+            _waypoints.Clear();
             _hpBarBack.Visible = false;
             _hpBarFill.Visible = false;
+            EnterState(SpriteState.Dead);
         }
+        else
+        {
+            _oneShotUntil = 0;
+            EnterState(SpriteState.Idle);
+        }
+
+        // O sprite procedural não tem pose de morte, então ele usa a cor. Note
+        // que com AlphaCut.Discard o corte é uniforme em 0,5: qualquer alpha
+        // abaixo disso some por inteiro, então escurecer é a única leitura
+        // possível — reduzir o alpha deixaria o corpo INVISÍVEL, não fantasma.
+        _fallbackSprite.Modulate = dead ? new Color(0.45f, 0.45f, 0.5f) : Colors.White;
     }
 
-    /// Texto que sobe e some: dano, "Miss" ou aviso.
     public void ShowFloatingText(string text, Color color)
     {
         var label = new Label3D
         {
             Text = text,
-            Position = new Vector3(0, 1.3f, 0),
-            Billboard = BaseMaterial3D.BillboardModeEnum.FixedY,
+            Position = new Vector3(0, BodyHeight * 0.8f, 0),
+            Billboard = BaseMaterial3D.BillboardModeEnum.Enabled,
             FontSize = 64,
             PixelSize = 0.006f,
             Modulate = color,
@@ -165,24 +240,30 @@ public sealed partial class EntityView : Node3D
         };
         AddChild(label);
 
-        // Tween em vez de _Process: o nó se remove sozinho ao terminar, sem o
-        // resto da cena precisar saber que ele existe.
         var tween = CreateTween();
         tween.SetParallel(true);
-        tween.TweenProperty(label, "position", new Vector3(0, 2.6f, 0), 0.9f);
+        tween.TweenProperty(label, "position", new Vector3(0, BodyHeight * 1.6f, 0), 0.9f);
         tween.TweenProperty(label, "modulate:a", 0.0f, 0.9f).SetDelay(0.3f);
         tween.Chain().TweenCallback(Callable.From(label.QueueFree));
     }
 
-    /// Começa a percorrer o trajeto que o servidor enviou. A posição de partida
-    /// vem do pacote, para o client se corrigir de qualquer desvio acumulado.
+    // --- Movimento ---------------------------------------------------------
+
+    /// Percorre o trajeto que o servidor enviou. A direção de cada passo vem
+    /// do próprio caminho, para o personagem encarar o trecho que está andando
+    /// — e não o fim do trajeto, como aconteceria usando a direção
+    /// autoritativa gravada no início da caminhada.
     public void FollowPath(WalkOrder order)
     {
-        _waypoints.Clear();
-        _speedUnitsPerSecond = 1000.0f / Mathf.Max(order.SpeedMsPerCell, 1);
+        if (_dead)
+        {
+            return;
+        }
 
-        // Se a interpolação divergiu muito da verdade do servidor, corrige de
-        // uma vez em vez de "escorregar" até o lugar certo.
+        _waypoints.Clear();
+        _speedMsPerCell = Mathf.Max(order.SpeedMsPerCell, 1);
+        _speedUnitsPerSecond = 1000.0f / _speedMsPerCell;
+
         var authoritative = MapRenderer.CellToWorld(order.FromX, order.FromY);
         if (Position.DistanceTo(authoritative) > 1.5f)
         {
@@ -196,32 +277,152 @@ public sealed partial class EntityView : Node3D
             var delta = WorldState.DirectionDeltas[(int)dir];
             x += delta.X;
             y += delta.Y;
-            _waypoints.Enqueue(MapRenderer.CellToWorld(x, y));
+            _waypoints.Enqueue((MapRenderer.CellToWorld(x, y), dir));
+        }
+
+        if (_waypoints.Count > 0)
+        {
+            _renderFacing = _waypoints.Peek().Facing;
+            EnterState(SpriteState.Walk);
         }
     }
 
     /// Posição autoritativa imposta pelo servidor: descarta o trajeto pendente.
-    public void SnapTo(int cellX, int cellY)
+    public void SnapTo(int cellX, int cellY, Direction facing)
     {
         _waypoints.Clear();
         Position = MapRenderer.CellToWorld(cellX, cellY);
+        _renderFacing = facing;
+        ApplyPose();
+    }
+
+    // --- Animação ----------------------------------------------------------
+
+    /// Toca o golpe uma vez, no tempo real que o servidor informou.
+    public void PlayAttack(Direction facing, int motionMs)
+    {
+        if (_dead)
+        {
+            return;
+        }
+
+        _renderFacing = facing;
+        _oneShotUntil = _now + System.Math.Max(motionMs, 1) / 1000.0;
+        EnterState(SpriteState.Attack);
+        ApplyPose();
+    }
+
+    /// Esquiva: o servidor manda dano 0 quando o golpe erra.
+    public void PlayEvade(int motionMs)
+    {
+        if (_dead || _state == SpriteState.Attack)
+        {
+            return;
+        }
+        _oneShotUntil = _now + System.Math.Max(motionMs, 1) / 1000.0;
+        EnterState(SpriteState.Evade);
+    }
+
+    private void EnterState(SpriteState state)
+    {
+        _state = state;
+    }
+
+    /// <summary>
+    /// Leva o sprite para o par (estado, direção) desejado.
+    ///
+    /// Chamada todo quadro e comparando o DESEJADO com o APLICADO, em vez de
+    /// depender de cada ponto de mudança lembrar de chamá-la. A versão
+    /// anterior só aplicava quando o ESTADO mudava, então começar uma nova
+    /// caminhada enquanto já se andava mantinha a pose e o espelhamento
+    /// antigos — virar para o oeste no meio do caminho não refletia o sprite.
+    /// </summary>
+    private void ApplyPose()
+    {
+        if (_sheet == null)
+        {
+            return;
+        }
+
+        if (_applied && _appliedState == _state && _appliedFacing == _renderFacing)
+        {
+            return;
+        }
+        _applied = true;
+        _appliedState = _state;
+        _appliedFacing = _renderFacing;
+
+        var (pose, flip) = SpriteLayout.PoseFor(_renderFacing);
+        var animation = SpriteLayout.AnimationName(_state, pose);
+
+        _sprite.FlipH = flip;
+
+        // SpeedScale por entidade, nunca SpriteFrames.SetAnimationSpeed: o
+        // recurso é compartilhado entre todas as entidades do mesmo tipo, e
+        // alterá-lo mudaria todo mundo na tela de uma vez.
+        _sprite.SpeedScale = FreezeAnimations ? 0.0f : SpeedScaleFor(_state, animation);
+
+        if (_sprite.Animation != animation)
+        {
+            _sprite.Animation = animation;
+            // Play() não reinicia uma animação já terminada a menos que o
+            // quadro esteja no fim; forçar o quadro faz cada golpe aparecer em
+            // vez de golpes seguidos se fundirem em um só.
+            _sprite.SetFrameAndProgress(0, 0.0f);
+        }
+
+        _sprite.Play(animation);
+    }
+
+    private float SpeedScaleFor(SpriteState state, string animation)
+    {
+        var frames = _sheet!.Frames.GetFrameCount(animation);
+        if (frames <= 1)
+        {
+            return 1.0f;
+        }
+
+        return state switch
+        {
+            // Ritmo fixo: a velocidade base da folha é 1, então a escala é o
+            // próprio valor em quadros por segundo.
+            SpriteState.Walk => WalkFps,
+            // Os quadros do golpe cabem na duração que o servidor informou.
+            SpriteState.Attack when _oneShotUntil > _now =>
+                (float)(frames / (_oneShotUntil - _now)),
+            _ => 1.0f,
+        };
     }
 
     public override void _Process(double delta)
+    {
+        _now += delta;
+
+        AdvanceMovement(delta);
+        AdvanceState();
+        ApplyPose();
+    }
+
+    private void AdvanceMovement(double delta)
     {
         if (_waypoints.Count == 0)
         {
             return;
         }
 
-        // Pode consumir mais de um waypoint num frame se o frame foi longo;
-        // sem isso o movimento ficaria mais lento que o do servidor.
         var budget = _speedUnitsPerSecond * (float)delta;
         while (budget > 0.0f && _waypoints.Count > 0)
         {
-            var target = _waypoints.Peek();
+            var (target, facing) = _waypoints.Peek();
             var toTarget = target - Position;
             var distance = toTarget.Length();
+
+            if (_state == SpriteState.Walk)
+            {
+                // Só anota o desejado; quem leva ao sprite é o ApplyPose do fim
+                // do quadro, que compara com o que já está aplicado.
+                _renderFacing = facing;
+            }
 
             if (distance <= budget)
             {
@@ -237,19 +438,51 @@ public sealed partial class EntityView : Node3D
         }
     }
 
-    /// Textura placeholder gerada em código: um bonequinho simples. Evita
-    /// depender de arte antes de ela existir, e a cor derivada do id deixa
-    /// dois clientes distinguíveis na mesma tela durante os testes.
+    /// Prioridade: dead > attack/evade > walk > idle.
+    private void AdvanceState()
+    {
+        if (_dead)
+        {
+            return;
+        }
+
+        if (_state is SpriteState.Attack or SpriteState.Evade)
+        {
+            if (_now < _oneShotUntil)
+            {
+                return;
+            }
+            _oneShotUntil = 0;
+        }
+
+        if (_waypoints.Count > 0)
+        {
+            _walkHoldUntil = _now + WalkHysteresisSeconds;
+            EnterState(SpriteState.Walk);
+            return;
+        }
+
+        if (_now < _walkHoldUntil)
+        {
+            return; // segura `walk` pela folga, para a emenda de trecho não piscar
+        }
+
+        EnterState(SpriteState.Idle);
+    }
+
+    // --- Placeholder procedural -------------------------------------------
+
     private static ImageTexture CreatePlaceholderTexture(uint entityId, bool isLocal,
                                                         EntityKind kind)
     {
-        var image = Image.CreateEmpty(SpriteWidthPx, SpriteHeightPx, false, Image.Format.Rgba8);
+        const int width = 20;
+        const int height = 32;
+
+        var image = Image.CreateEmpty(width, height, false, Image.Format.Rgba8);
         image.Fill(new Color(0, 0, 0, 0));
 
-        // Matiz a partir do id: estável entre clientes, porque o id vem do
-        // servidor. O passo é o conjugado da razão áurea, que espalha ids
-        // consecutivos por matizes bem distantes — com um passo pequeno, dois
-        // jogadores que entram juntos saem quase da mesma cor.
+        // Matiz a partir do id, com passo da razão áurea: ids consecutivos
+        // saem em cores bem distantes.
         var hue = (entityId * 0.618033988f) % 1.0f;
         var body = isLocal ? new Color(0.95f, 0.85f, 0.35f) : Color.FromHsv(hue, 0.55f, 0.85f);
         var skin = new Color(0.95f, 0.78f, 0.62f);
@@ -257,31 +490,24 @@ public sealed partial class EntityView : Node3D
 
         if (kind == EntityKind.Monster)
         {
-            // Monstro: corpo baixo e arredondado, sem pernas. A silhueta
-            // precisa diferir do jogador mesmo em miniatura na tela.
             var blob = Color.FromHsv(hue, 0.7f, 0.9f);
             FillRect(image, 3, 14, 14, 16, blob);
             FillRect(image, 5, 11, 10, 4, blob);
-            FillRect(image, 6, 19, 2, 3, outline);  // olhos
+            FillRect(image, 6, 19, 2, 3, outline);
             FillRect(image, 12, 19, 2, 3, outline);
         }
         else
         {
-            // Jogador: cabeça (2..11), corpo (12..24), pernas (25..31).
             FillRect(image, 6, 2, 8, 10, skin);
             FillRect(image, 5, 12, 10, 13, body);
             FillRect(image, 6, 25, 3, 7, outline);
             FillRect(image, 11, 25, 3, 7, outline);
         }
 
-        // Contorno simples: escurece a borda do corpo para o sprite não sumir
-        // contra o chão verde. As posições são coletadas antes de escrever,
-        // senão um pixel de contorno recém-escrito seria vizinho opaco do
-        // próximo e o contorno engrossaria sozinho.
         var outlinePixels = new List<Vector2I>();
-        for (var y = 0; y < SpriteHeightPx; y++)
+        for (var y = 0; y < height; y++)
         {
-            for (var x = 0; x < SpriteWidthPx; x++)
+            for (var x = 0; x < width; x++)
             {
                 if (image.GetPixel(x, y).A <= 0.0f && HasOpaqueNeighbour(image, x, y))
                 {

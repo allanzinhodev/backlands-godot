@@ -14,6 +14,19 @@ config/name="backlands-godot"
 run/main_scene="res://client/scenes/main.tscn"
 config/features=PackedStringArray("4.7", "Mobile")
 config/icon="res://icon.svg"
+run/max_fps.android_emulator=30
+
+[importer_defaults]
+
+; Pixel art: sem compressão VRAM e sem mipmaps. O padrão do Godot é
+; detect_3d/compress_to=1, que reimporta a textura silenciosamente com
+; compressão assim que um nó 3D a usa — e isso destrói as bordas duras da arte.
+; TextureFilter=Nearest não salva: corrige magnificação, não texels já perdidos.
+texture={
+"compress/mode": 0,
+"detect_3d/compress_to": 0,
+"mipmaps/generate": false
+}
 
 [display]
 
@@ -26,11 +39,22 @@ window/stretch/aspect="expand"
 
 project/assembly_name="backlands-godot"
 
+[editor_plugins]
+
+enabled=PackedStringArray("res://addons/raw_assets/plugin.cfg")
+
+[input_devices]
+
+pointing/emulate_mouse_from_touch=true
+
 [physics]
 
 3d/physics_engine="Jolt Physics"
 
 [rendering]
 
+textures/vram_compression/import_etc2_astc=true
+
 rendering_device/driver.windows="d3d12"
 renderer/rendering_method="mobile"
+renderer/rendering_method.android_emulator="gl_compatibility"

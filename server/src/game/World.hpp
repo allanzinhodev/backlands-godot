@@ -26,6 +26,9 @@ public:
     // mapa torto só apareceria depois, como jogador atravessando o rio.
     void load_map(const std::string& lua_path);
 
+    // Folha de sprites dos jogadores, vinda da configuração.
+    void set_player_sprite(std::string sprite) { player_sprite_ = std::move(sprite); }
+
     void add_session(const net::SessionPtr& session);
     void remove_session(net::SessionId id);
 
@@ -78,6 +81,7 @@ private:
     std::unordered_map<net::SessionId, net::SessionPtr> sessions_;
     EntityRegistry entities_;
     MapDefinition map_;
+    std::string player_sprite_ = "player";
     std::uint64_t tick_count_ = 0;
     std::uint32_t world_time_ms_ = 0;
 

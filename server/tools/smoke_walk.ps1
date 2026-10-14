@@ -159,8 +159,9 @@ try {
     $targetX = $spawnX + 4
     Send-WalkTo -Stream $a.Stream -X $targetX -Y $spawnY
 
-    $walkFrame = Read-FrameOfAnyType -Stream $a.Stream -Opcodes @($S_ENTITY_WALK, $S_ENTITY_STOP)
-    if ($null -eq $walkFrame -or $walkFrame.Opcode -ne $S_ENTITY_WALK) {
+    $walkFrame = Find-FrameForEntity -Stream $a.Stream -Opcode $S_ENTITY_WALK `
+        -EntityId $a.Enter.EntityId
+    if ($null -eq $walkFrame) {
         Write-Result $false 'recebeu S_ENTITY_WALK' "(veio $(Get-OpcodeName $walkFrame.Opcode))"
     }
     else {
@@ -193,25 +194,25 @@ try {
 
     # Dentro do rio.
     Send-WalkTo -Stream $a.Stream -X 15 -Y 20
-    $stopFrame = Read-FrameOfAnyType -Stream $a.Stream -Opcodes @($S_ENTITY_STOP, $S_ENTITY_WALK)
-    Write-Result ($null -ne $stopFrame -and $stopFrame.Opcode -eq $S_ENTITY_STOP) `
-        'andar para dentro do rio é recusado' "(veio $(Get-OpcodeName $stopFrame.Opcode))"
+    $stopFrame = Find-FrameForEntity -Stream $a.Stream -Opcode $S_ENTITY_STOP `
+        -EntityId $a.Enter.EntityId
+    Write-Result ($null -ne $stopFrame) 'andar para dentro do rio é recusado'
 
     # Fora do mapa.
     Send-WalkTo -Stream $a.Stream -X 9999 -Y 9999
-    $stopFrame2 = Read-FrameOfAnyType -Stream $a.Stream -Opcodes @($S_ENTITY_STOP, $S_ENTITY_WALK)
-    Write-Result ($null -ne $stopFrame2 -and $stopFrame2.Opcode -eq $S_ENTITY_STOP) `
-        'andar para fora do mapa é recusado'
+    $stopFrame2 = Find-FrameForEntity -Stream $a.Stream -Opcode $S_ENTITY_STOP `
+        -EntityId $a.Enter.EntityId
+    Write-Result ($null -ne $stopFrame2) 'andar para fora do mapa é recusado'
 
     # Em cima da borda sólida.
     Send-WalkTo -Stream $a.Stream -X 0 -Y 0
-    $stopFrame3 = Read-FrameOfAnyType -Stream $a.Stream -Opcodes @($S_ENTITY_STOP, $S_ENTITY_WALK)
-    Write-Result ($null -ne $stopFrame3 -and $stopFrame3.Opcode -eq $S_ENTITY_STOP) `
-        'andar para dentro da pedra é recusado'
+    $stopFrame3 = Find-FrameForEntity -Stream $a.Stream -Opcode $S_ENTITY_STOP `
+        -EntityId $a.Enter.EntityId
+    Write-Result ($null -ne $stopFrame3) 'andar para dentro da pedra é recusado'
 
     # A recusa devolve a posição autoritativa, para o client corrigir qualquer
     # animação otimista que tenha começado.
-    if ($null -ne $stopFrame3 -and $stopFrame3.Opcode -eq $S_ENTITY_STOP) {
+    if ($null -ne $stopFrame3) {
         $id = Read-PayloadU32 -Payload $stopFrame3.Payload -Offset 0
         $sx = Read-PayloadU16 -Payload $stopFrame3.Payload -Offset $id.Next
         $sy = Read-PayloadU16 -Payload $stopFrame3.Payload -Offset $sx.Next
@@ -223,8 +224,9 @@ try {
     Write-Host "`nTravessia do rio pela ponte"
     # Da margem oeste para a leste, na altura da ponte.
     Send-WalkTo -Stream $a.Stream -X 25 -Y 16
-    $crossFrame = Read-FrameOfAnyType -Stream $a.Stream -Opcodes @($S_ENTITY_WALK, $S_ENTITY_STOP)
-    if ($null -eq $crossFrame -or $crossFrame.Opcode -ne $S_ENTITY_WALK) {
+    $crossFrame = Find-FrameForEntity -Stream $a.Stream -Opcode $S_ENTITY_WALK `
+        -EntityId $a.Enter.EntityId
+    if ($null -eq $crossFrame) {
         Write-Result $false 'travessia aceita' "(veio $(Get-OpcodeName $crossFrame.Opcode))"
     }
     else {
@@ -248,12 +250,14 @@ try {
     Write-Result ($null -ne $b.Enter) 'segundo jogador entrou'
 
     # B deve ver o spawn de A.
-    $spawnOfA = Read-FrameOfType -Stream $b.Stream -Opcode $S_ENTITY_SPAWN -MaxFrames 10
+    $spawnOfA = Find-FrameForEntity -Stream $b.Stream -Opcode $S_ENTITY_SPAWN `
+        -EntityId $a.Enter.EntityId
     Write-Result ($null -ne $spawnOfA) 'B vê a entidade de A'
 
     # A anda; B precisa receber o trajeto.
     Send-WalkTo -Stream $a.Stream -X 20 -Y 16
-    $walkOnB = Read-FrameOfType -Stream $b.Stream -Opcode $S_ENTITY_WALK -MaxFrames 10
+    $walkOnB = Find-FrameForEntity -Stream $b.Stream -Opcode $S_ENTITY_WALK `
+        -EntityId $a.Enter.EntityId
     if ($null -eq $walkOnB) {
         Write-Result $false 'B recebe o trajeto de A' '(nada chegou)'
     }

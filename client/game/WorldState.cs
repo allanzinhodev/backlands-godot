@@ -8,11 +8,12 @@ namespace Backlands.Game;
 /// o client só guarda o que recebeu.
 public sealed class RemoteEntity
 {
-    public RemoteEntity(uint id, string name, int cellX, int cellY, Direction facing,
-                        EntityKind kind, int hp, int maxHp)
+    public RemoteEntity(uint id, string name, string sprite, int cellX, int cellY,
+                        Direction facing, EntityKind kind, int hp, int maxHp)
     {
         Id = id;
         Name = name;
+        Sprite = sprite;
         CellX = cellX;
         CellY = cellY;
         Facing = facing;
@@ -24,6 +25,11 @@ public sealed class RemoteEntity
     public uint Id { get; }
 
     public string Name { get; }
+
+    /// Chave da folha de sprites, vinda do servidor. Separada do nome de
+    /// exibição de propósito: nome é texto do usuário e colidiria entre
+    /// jogador e monstro.
+    public string Sprite { get; }
 
     public EntityKind Kind { get; }
 
@@ -43,6 +49,9 @@ public sealed class RemoteEntity
 
     public int CellY { get; internal set; }
 
+    /// Direção em repouso, dita pelo servidor em spawn, parada, golpe e
+    /// respawn. NÃO é a direção de render durante uma caminhada — essa vem do
+    /// trecho que está sendo percorrido, e vive no nó da cena.
     public Direction Facing { get; internal set; }
 }
 
@@ -131,8 +140,9 @@ public sealed class WorldState
     /// A entidade parou aqui — caminho bloqueado ou destino recusado.
     public event Action<RemoteEntity>? EntityStopped;
 
-    /// Alguém bateu em alguém. Dano 0 significa que o golpe errou.
-    public event Action<RemoteEntity?, RemoteEntity, int>? EntityAttacked;
+    /// Alguém bateu em alguém. Dano 0 significa que o golpe errou. A duração
+    /// vem do servidor para a animação caber no tempo real do golpe.
+    public event Action<RemoteEntity?, RemoteEntity, int, int>? EntityAttacked;
 
     public event Action<RemoteEntity, RemoteEntity?>? EntityDied;
 
@@ -198,6 +208,7 @@ public sealed class WorldState
         var facing = reader.ReadU8();
         var hp = reader.ReadI32();
         var maxHp = reader.ReadI32();
+        var sprite = reader.ReadString();
         var map = reader.ReadString();
         var name = reader.ReadString();
 
@@ -210,8 +221,8 @@ public sealed class WorldState
         LocalEntityId = id;
         MapName = map;
 
-        var entity = new RemoteEntity(id, name, x, y, (Direction)facing, EntityKind.Player, hp,
-                                      maxHp);
+        var entity = new RemoteEntity(id, name, sprite, x, y, (Direction)facing,
+                                      EntityKind.Player, hp, maxHp);
         _entities[id] = entity;
 
         EnteredWorld?.Invoke(entity);
@@ -228,6 +239,7 @@ public sealed class WorldState
         var kind = reader.ReadU8();
         var hp = reader.ReadI32();
         var maxHp = reader.ReadI32();
+        var sprite = reader.ReadString();
         var name = reader.ReadString();
 
         if (reader.Failed || id == 0 || facing > (byte)Direction.SouthEast
@@ -249,8 +261,8 @@ public sealed class WorldState
             return true;
         }
 
-        var entity = new RemoteEntity(id, name, x, y, (Direction)facing, (EntityKind)kind, hp,
-                                      maxHp);
+        var entity = new RemoteEntity(id, name, sprite, x, y, (Direction)facing,
+                                      (EntityKind)kind, hp, maxHp);
         _entities[id] = entity;
         EntitySpawned?.Invoke(entity);
         return true;
@@ -368,12 +380,28 @@ public sealed class WorldState
     {
         var sourceId = reader.ReadU32();
         var targetId = reader.ReadU32();
+        var sourceX = reader.ReadU16();
+        var sourceY = reader.ReadU16();
+        var sourceFacing = reader.ReadU8();
+        var motionMs = reader.ReadU16();
         var damage = reader.ReadI32();
         var hp = reader.ReadI32();
 
-        if (reader.Failed)
+        if (reader.Failed || sourceFacing > (byte)Direction.SouthEast)
         {
             return false;
+        }
+
+        // O atacante é corrigido para a posição e direção autoritativas: no
+        // servidor, golpear limpa a caminhada sem emitir parada, então sem isto
+        // o client continuaria percorrendo o trajeto abandonado e o atacante
+        // deslizaria pelo chão enquanto ataca.
+        if (_entities.TryGetValue(sourceId, out var source))
+        {
+            source.CellX = sourceX;
+            source.CellY = sourceY;
+            source.Facing = (Direction)sourceFacing;
+            EntityStopped?.Invoke(source);
         }
 
         if (!_entities.TryGetValue(targetId, out var target))
@@ -386,16 +414,17 @@ public sealed class WorldState
         // para sempre.
         target.Hp = hp;
 
-        _entities.TryGetValue(sourceId, out var source);
-        EntityAttacked?.Invoke(source, target, damage);
+        EntityAttacked?.Invoke(source, target, damage, motionMs);
         return true;
     }
 
-    /// S_ENTITY_DIED: u32 morto, u32 matador.
+    /// S_ENTITY_DIED: u32 morto, u32 matador, u16 x, u16 y.
     public bool HandleEntityDied(ref PacketReader reader)
     {
         var deadId = reader.ReadU32();
         var killerId = reader.ReadU32();
+        var x = reader.ReadU16();
+        var y = reader.ReadU16();
         if (reader.Failed)
         {
             return false;
@@ -406,21 +435,27 @@ public sealed class WorldState
             return true;
         }
 
+        // Onde o corpo caiu. Morrer no meio de uma caminhada não gera parada,
+        // e sem esta correção o cadáver deslizaria até o destino antigo.
+        dead.CellX = x;
+        dead.CellY = y;
         dead.Hp = 0;
+
         _entities.TryGetValue(killerId, out var killer);
         EntityDied?.Invoke(dead, killer);
         return true;
     }
 
-    /// S_ENTITY_RESPAWN: u32 id, u16 x, u16 y, i32 vida.
+    /// S_ENTITY_RESPAWN: u32 id, u16 x, u16 y, u8 dir, i32 vida.
     public bool HandleEntityRespawn(ref PacketReader reader)
     {
         var id = reader.ReadU32();
         var x = reader.ReadU16();
         var y = reader.ReadU16();
+        var facing = reader.ReadU8();
         var hp = reader.ReadI32();
 
-        if (reader.Failed)
+        if (reader.Failed || facing > (byte)Direction.SouthEast)
         {
             return false;
         }
@@ -432,6 +467,7 @@ public sealed class WorldState
 
         entity.CellX = x;
         entity.CellY = y;
+        entity.Facing = (Direction)facing;
         entity.Hp = hp;
         EntityRespawned?.Invoke(entity);
         return true;

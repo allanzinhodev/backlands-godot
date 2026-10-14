@@ -1,0 +1,18 @@
+{
+  "id": "impact_frost_nova",
+  "title": "Frost Nova",
+  "frame_width": 320,
+  "frame_height": 320,
+  "frames": 16,
+  "fps": 16,
+  "loop": false,
+  "tile_size": 64,
+  "pivot": [
+    176.0,
+    176.0
+  ],
+  "on_ground": false,
+  "layer": "full",
+  "variant": "crystal",
+  "sheet": "impact_frost_nova.png"
+}

@@ -24,6 +24,7 @@ std::vector<std::byte> make_spawn_frame(const Entity& entity) {
     writer.write_u8(static_cast<std::uint8_t>(entity.kind));
     writer.write_i32(entity.stats.hp);
     writer.write_i32(entity.stats.max_hp);
+    writer.write_string(entity.sprite);
     writer.write_string(entity.name);
     return writer.finish();
 }
@@ -35,6 +36,14 @@ std::vector<std::byte> make_attack_frame(const CombatEvent& event) {
     net::PacketWriter writer(net::to_raw(net::ServerOpcode::EntityAttack));
     writer.write_u32(event.source);
     writer.write_u32(event.target);
+    // Posição e direção do atacante: o client trata isto como parada implícita
+    // e para de percorrer o trajeto que o servidor já abandonou ao golpear.
+    writer.write_u16(event.source_cell.x);
+    writer.write_u16(event.source_cell.y);
+    writer.write_u8(static_cast<std::uint8_t>(event.source_facing));
+    // Duração real do golpe, para a animação caber no tempo certo em vez de
+    // usar uma taxa fixa que só serviria para um tipo de entidade.
+    writer.write_u16(event.attack_motion_ms);
     writer.write_i32(event.damage);
     writer.write_i32(event.hp);
     return writer.finish();
@@ -44,6 +53,10 @@ std::vector<std::byte> make_died_frame(const CombatEvent& event) {
     net::PacketWriter writer(net::to_raw(net::ServerOpcode::EntityDied));
     writer.write_u32(event.target);
     writer.write_u32(event.source);
+    // Onde o corpo caiu. Morrer no meio de uma caminhada não gera parada, e
+    // sem isto o cadáver continuaria deslizando até o destino antigo.
+    writer.write_u16(event.cell.x);
+    writer.write_u16(event.cell.y);
     return writer.finish();
 }
 
@@ -52,6 +65,7 @@ std::vector<std::byte> make_respawn_frame(const Entity& entity) {
     writer.write_u32(entity.id);
     writer.write_u16(entity.cell.x);
     writer.write_u16(entity.cell.y);
+    writer.write_u8(static_cast<std::uint8_t>(entity.facing));
     writer.write_i32(entity.stats.hp);
     return writer.finish();
 }
@@ -146,6 +160,7 @@ void World::spawn_map_monsters() {
             monster.stats.attack_delay_ms = tmpl->attack_delay_ms;
             monster.walk.speed_ms_per_cell = tmpl->walk_speed_ms;
 
+            monster.sprite = tmpl->sprite.empty() ? tmpl->species : tmpl->sprite;
             monster.brain.species = tmpl->species;
             monster.brain.home = cell;
             monster.brain.view_range = tmpl->view_range;
@@ -199,7 +214,10 @@ EntityRegistry::SpawnError World::try_login(net::Session& session, std::string_v
         return result.error;
     }
 
-    const Entity* entity = entities_.find(result.id);
+    Entity* spawned = entities_.find(result.id);
+    spawned->sprite = player_sprite_;
+
+    const Entity* entity = spawned;
 
     // O mapa vai antes do resto: o client precisa do grid para desenhar o
     // cenário e para dar feedback de célula inválida sob o cursor.
@@ -214,6 +232,7 @@ EntityRegistry::SpawnError World::try_login(net::Session& session, std::string_v
     writer.write_u8(static_cast<std::uint8_t>(entity->facing));
     writer.write_i32(entity->stats.hp);
     writer.write_i32(entity->stats.max_hp);
+    writer.write_string(entity->sprite);
     writer.write_string(map_.name);
     writer.write_string(entity->name);
     session.send(writer.finish());
@@ -363,6 +382,10 @@ void World::advance_chasing() {
             const Entity* chasing = entities_.find(target_id);
             if (chasing != nullptr && chasing->alive() && in_attack_range(*entity, *chasing)) {
                 entity->walk.clear();
+                // Vira para o alvo antes de anunciar a parada: sem isto a
+                // entidade fica encarando a última direção em que andou até o
+                // primeiro golpe corrigir.
+                entity->facing = direction_towards(entity->cell, chasing->cell);
                 broadcast(make_stop_frame(*entity));
             }
             continue;

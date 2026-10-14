@@ -75,6 +75,11 @@ ServerConfig ServerConfig::load_from_file(const std::string& path) {
     }
     config.map_path = *map_path;
 
+    const sol::optional<std::string> player_sprite = world["player_sprite"];
+    if (player_sprite.has_value() && !player_sprite->empty()) {
+        config.player_sprite = *player_sprite;
+    }
+
     return config;
 }
 

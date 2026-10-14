@@ -15,6 +15,11 @@ struct ServerConfig {
     // Caminho do mapa a carregar, relativo ao diretório de execução.
     std::string map_path = "maps/starter_fields.lua";
 
+    // Folha de sprites que os jogadores usam. É só a chave do arquivo em
+    // spritesheets/ — o servidor não lê a arte, apenas diz ao client qual
+    // folha usar.
+    std::string player_sprite = "player";
+
     // Carrega e valida o arquivo. Lança std::runtime_error com mensagem
     // legível se o arquivo não existir, não compilar ou tiver valor inválido:
     // subir com configuração silenciosamente errada é pior que não subir.

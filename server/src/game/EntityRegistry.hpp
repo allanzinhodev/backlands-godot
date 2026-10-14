@@ -21,6 +21,7 @@ public:
         InvalidName = 1,
         NameInUse = 2,
         AlreadySpawned = 3,
+        ProtocolMismatch = 4,
     };
 
     struct SpawnResult {

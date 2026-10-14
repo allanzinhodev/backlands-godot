@@ -198,6 +198,7 @@ MapDefinition load_map_from_lua(const std::string& path) {
 
             const sol::table entry = value.as<sol::table>();
             monster.name = entry.get_or("name", monster.species);
+            monster.sprite = entry.get_or("sprite", std::string{});
             monster.max_hp = entry.get_or("max_hp", monster.max_hp);
             monster.attack_min = entry.get_or("attack_min", monster.attack_min);
             monster.attack_max = entry.get_or("attack_max", monster.attack_max);

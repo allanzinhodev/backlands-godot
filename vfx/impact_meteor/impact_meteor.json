@@ -1,0 +1,18 @@
+{
+  "id": "impact_meteor",
+  "title": "Meteor Strike",
+  "frame_width": 384,
+  "frame_height": 384,
+  "frames": 20,
+  "fps": 16,
+  "loop": false,
+  "tile_size": 64,
+  "pivot": [
+    240.0,
+    240.0
+  ],
+  "on_ground": false,
+  "layer": "full",
+  "variant": "fire",
+  "sheet": "impact_meteor.png"
+}

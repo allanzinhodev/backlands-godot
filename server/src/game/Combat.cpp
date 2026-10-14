@@ -139,12 +139,25 @@ std::vector<CombatEvent> advance_combat(EntityRegistry& registry, std::uint32_t 
             result.killed = applied.killed;
         }
 
-        events.push_back(CombatEvent{CombatEvent::Type::Hit, attacker->id, target->id,
-                                     result.damage, target->cell, target->stats.hp});
+        CombatEvent hit;
+        hit.type = CombatEvent::Type::Hit;
+        hit.source = attacker->id;
+        hit.target = target->id;
+        hit.damage = result.damage;
+        hit.cell = target->cell;
+        hit.hp = target->stats.hp;
+        hit.source_cell = attacker->cell;
+        hit.source_facing = attacker->facing;
+        hit.attack_motion_ms = attacker->stats.attack_motion_ms;
+        events.push_back(hit);
 
         if (result.killed) {
-            events.push_back(CombatEvent{CombatEvent::Type::Died, attacker->id, target->id, 0,
-                                         target->cell, 0});
+            CombatEvent died;
+            died.type = CombatEvent::Type::Died;
+            died.source = attacker->id;
+            died.target = target->id;
+            died.cell = target->cell;
+            events.push_back(died);
 
             // Quem matou não continua golpeando o cadáver.
             attacker->combat.clear_target();

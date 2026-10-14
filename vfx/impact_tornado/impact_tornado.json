@@ -1,0 +1,18 @@
+{
+  "id": "impact_tornado",
+  "title": "Tornado",
+  "frame_width": 192,
+  "frame_height": 256,
+  "frames": 20,
+  "fps": 16,
+  "loop": false,
+  "tile_size": 64,
+  "pivot": [
+    112.0,
+    176.0
+  ],
+  "on_ground": false,
+  "layer": "full",
+  "variant": "earth",
+  "sheet": "impact_tornado.png"
+}

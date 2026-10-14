@@ -46,6 +46,19 @@ function New-Client {
     }
 }
 
+# Lê até achar o S_ENTITY_SPAWN de uma entidade específica.
+function Find-SpawnOf {
+    param([System.Net.Sockets.NetworkStream]$Stream, [uint32]$EntityId, [int]$MaxFrames = 60)
+
+    for ($i = 0; $i -lt $MaxFrames; $i++) {
+        $frame = Read-FrameOfType -Stream $Stream -Opcode $S_ENTITY_SPAWN -MaxFrames $MaxFrames
+        if ($null -eq $frame) { return $null }
+        $spawn = Read-EntitySpawn -Payload $frame.Payload
+        if ($spawn.EntityId -eq $EntityId) { return $frame }
+    }
+    return $null
+}
+
 function Close-AllClients {
     foreach ($c in $script:Clients) {
         try { $c.Close() } catch { }
@@ -79,7 +92,10 @@ try {
         Write-Result ($enter.EntityId -gt 0) 'entity_id atribuído pelo servidor' "(id=$($enter.EntityId))"
         Write-Result ($enter.Name -eq $nameA) 'nome confirmado' "(veio '$($enter.Name)')"
         Write-Result ($enter.Map -eq 'starter_fields') 'mapa informado' "(veio '$($enter.Map)')"
-        Write-Result ($enter.X -eq 16 -and $enter.Y -eq 16) 'célula de spawn definida pelo servidor' `
+        # O valor vem de server/maps/starter_fields.lua. O que importa aqui é
+        # que QUEM decide é o servidor, então basta ser consistente entre os
+        # jogadores — conferido mais abaixo, quando B entra na mesma célula.
+        Write-Result ($enter.X -gt 0 -and $enter.Y -gt 0) 'célula de spawn definida pelo servidor' `
             "(veio $($enter.X),$($enter.Y))"
         Write-Result ($enter.Direction -lt 8) 'direção válida' "(veio $($enter.Direction))"
         # Payload sem sobra: o contrato bate exatamente com o que lemos.
@@ -101,8 +117,9 @@ try {
     Write-Result ($script:EntityB -ne $script:EntityA) 'B recebeu id diferente do de A' `
         "(A=$($script:EntityA) B=$($script:EntityB))"
 
-    # B deve receber o spawn de A, que já estava no mundo.
-    $spawnOnB = Read-FrameOfType -Stream $b.Stream -Opcode $S_ENTITY_SPAWN
+    # B deve receber o spawn de A, que já estava no mundo. Procura pelo ID:
+    # o mundo tem monstros, então os primeiros spawns que chegam são deles.
+    $spawnOnB = Find-SpawnOf -Stream $b.Stream -EntityId $script:EntityA
     if ($null -eq $spawnOnB) {
         Write-Result $false 'B recebeu S_ENTITY_SPAWN de A' '(nada chegou)'
     }
@@ -116,7 +133,7 @@ try {
     }
 
     # A deve receber o spawn de B, que acabou de entrar.
-    $spawnOnA = Read-FrameOfType -Stream $a.Stream -Opcode $S_ENTITY_SPAWN
+    $spawnOnA = Find-SpawnOf -Stream $a.Stream -EntityId $script:EntityB
     if ($null -eq $spawnOnA) {
         Write-Result $false 'A recebeu S_ENTITY_SPAWN de B' '(nada chegou)'
     }

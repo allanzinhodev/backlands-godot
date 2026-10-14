@@ -104,6 +104,7 @@ public sealed partial class GameSession : Node
     private void OnConnected()
     {
         var writer = new PacketWriter(ClientOpcode.Login);
+        writer.WriteU16(Protocol.Version);
         writer.WriteString(_pendingName);
         _client.Send(writer);
     }

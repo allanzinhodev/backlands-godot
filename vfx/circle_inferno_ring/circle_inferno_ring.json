@@ -1,0 +1,18 @@
+{
+  "id": "circle_inferno_ring",
+  "title": "Inferno Ring",
+  "frame_width": 320,
+  "frame_height": 320,
+  "frames": 24,
+  "fps": 12,
+  "loop": true,
+  "tile_size": 64,
+  "pivot": [
+    160.0,
+    160.0
+  ],
+  "on_ground": true,
+  "layer": "ground",
+  "variant": "fire",
+  "sheet": "circle_inferno_ring.png"
+}
