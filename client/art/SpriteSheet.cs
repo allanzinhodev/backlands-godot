@@ -24,10 +24,11 @@ public sealed class SpriteSheet
 {
     private static readonly Dictionary<string, SpriteSheet?> Cache = new();
 
-    private SpriteSheet(string key, SpriteFrames frames, int columns, int rows)
+    private SpriteSheet(string key, SpriteFrames frames, Texture2D portrait, int columns, int rows)
     {
         Key = key;
         Frames = frames;
+        Portrait = portrait;
         Columns = columns;
         Rows = rows;
     }
@@ -35,6 +36,12 @@ public sealed class SpriteSheet
     public string Key { get; }
 
     public SpriteFrames Frames { get; }
+
+    /// Cabeça e tronco do quadro idle de frente, recortados por
+    /// <see cref="SpriteLayout.PortraitCrop"/> sobre a MESMA textura da folha
+    /// (um atlas, não uma cópia): é o que a janela básica mostra, e assim a UI
+    /// continua dependendo só de <c>art</c> para desenhar o personagem.
+    public Texture2D Portrait { get; }
 
     public int Columns { get; }
 
@@ -187,7 +194,26 @@ public sealed class SpriteSheet
         }
 
         GD.Print($"[sprite] '{key}' carregada: {columns.Count}x{rows.Count} quadros");
-        return new SpriteSheet(key, frames, columns.Count, rows.Count);
+        return new SpriteSheet(key, frames, BuildPortrait(texture, columns, rows), columns.Count, rows.Count);
+    }
+
+    /// O retrato é o recorte fixo dentro da célula do idle de frente — a única
+    /// célula que toda folha tem, já que é para onde as animações que faltam
+    /// caem.
+    private static AtlasTexture BuildPortrait(Texture2D texture, List<SpriteSheetGrid.Band> columns,
+                                              List<SpriteSheetGrid.Band> rows)
+    {
+        var cell = SpriteLayout.CellsFor(SpriteState.Idle, SpritePose.Front)[0];
+        var crop = SpriteLayout.PortraitCrop;
+        return new AtlasTexture
+        {
+            Atlas = texture,
+            Region = new Rect2(columns[cell.Column - 1].Start + crop.Position.X,
+                               rows[cell.Row - 1].Start + crop.Position.Y,
+                               crop.Size),
+            Margin = new Rect2(0, 0, 0, 0),
+            FilterClip = true,
+        };
     }
 
     private static Image? LoadImage(string path)

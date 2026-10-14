@@ -26,6 +26,7 @@ public sealed class LaunchOptions
     //   --camera=guinada,incl  começa com a câmera nesse ângulo, em graus
     //   --attack-nearest       ataca o monstro mais próximo assim que o vir
     //   --map-preview          desenha o mapa inicial lido do Lua, sem servidor
+    //   --open-options         abre a janela de opções ao entrar no mundo
 
     public string? AutoLoginName { get; private init; }
 
@@ -54,6 +55,8 @@ public sealed class LaunchOptions
 
     public bool AttackNearest { get; private init; }
 
+    public bool OpenOptions { get; private init; }
+
     public static LaunchOptions Parse(IEnumerable<string> args)
     {
         string? autoLoginName = null;
@@ -68,6 +71,7 @@ public sealed class LaunchOptions
         (float Yaw, float Pitch)? cameraAngles = null;
         float? cameraSize = null;
         var attackNearest = false;
+        var openOptions = false;
 
         foreach (var arg in args)
         {
@@ -129,6 +133,10 @@ public sealed class LaunchOptions
             {
                 attackNearest = true;
             }
+            else if (arg == "--open-options")
+            {
+                openOptions = true;
+            }
             else if (arg.StartsWith("--screenshot-delay=", System.StringComparison.Ordinal)
                      && int.TryParse(arg["--screenshot-delay=".Length..], out var frames))
             {
@@ -150,6 +158,7 @@ public sealed class LaunchOptions
             CameraAngles = cameraAngles,
             CameraSize = cameraSize,
             AttackNearest = attackNearest,
+            OpenOptions = openOptions,
         };
     }
 }

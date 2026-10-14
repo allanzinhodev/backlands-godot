@@ -73,6 +73,22 @@ public static class SpriteLayout
     /// partir daqui, então mexer só neste número reposiciona o resto junto.
     public const float BodyHeightUnits = 3.2f;
 
+    /// <summary>
+    /// O recorte do retrato dentro do quadro idle de frente, em pixels de
+    /// arte, e a ampliação com que a UI o mostra.
+    ///
+    /// Medido na arte: nas folhas de spritesheets/ o personagem ocupa uns
+    /// 15×29 px centrados no quadro de 32×48, com o topo da cabeça por volta
+    /// da linha 14. Os 32 px de cima do quadro deixariam 14 px de nada sobre
+    /// a cabeça; um recorte de 21×21 a partir de (5, 13) pega cabeça e tronco.
+    /// Ampliado 3× vira 63 px, com cada pixel da arte inteiro na tela — sem
+    /// fração e sem borrão, pelo mesmo motivo de o sprite no mundo ser
+    /// desenhado com Nearest.
+    /// </summary>
+    public static readonly Godot.Rect2 PortraitCrop = new(5, 13, 21, 21);
+
+    public const int PortraitScale = 3;
+
     /// Quantas unidades de mundo cada pixel da arte ocupa.
     ///
     /// Sem suavização em canto nenhum: a textura é construída em tempo de

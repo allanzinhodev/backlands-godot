@@ -7,44 +7,57 @@ namespace Backlands.Dev;
 
 /// <summary>
 /// O jogador automático dos testes: anda (--walk), ataca o primeiro monstro
-/// que aparecer (--attack-nearest), conjura (--cast) e agenda a captura de
-/// tela ao entrar no mundo.
+/// que aparecer (--attack-nearest), conjura (--cast), abre a janela de opções
+/// (--open-options) e agenda a captura de tela ao entrar no mundo.
 ///
 /// Usa os MESMOS caminhos do jogador de verdade — pedidos ao servidor, seleção
-/// de alvo, conjuro —, para o teste exercitar o client real e não um atalho.
+/// de alvo, conjuro, a engrenagem —, para o teste exercitar o client real e não
+/// um atalho.
 /// </summary>
 public sealed class AutoPilot
 {
     private readonly (int X, int Y)? _autoWalk;
     private readonly bool _autoAttackNearest;
+    private readonly bool _openOptions;
     private int _autoCastSlot;
 
     private readonly IPlayerCommands _commands;
     private readonly TargetSelection _targets;
     private readonly CastController _cast;
+    private readonly BasicInfoWindow _basicInfo;
     private readonly ScreenshotCapture _screenshot;
 
     /// <param name="castSlot">Slot de --cast, contando de 1; fora de 1..12 desliga.</param>
-    public AutoPilot((int X, int Y)? walk, bool attackNearest, int castSlot,
+    public AutoPilot((int X, int Y)? walk, bool attackNearest, int castSlot, bool openOptions,
                      IPlayerCommands commands, TargetSelection targets, CastController cast,
-                     ScreenshotCapture screenshot)
+                     BasicInfoWindow basicInfo, ScreenshotCapture screenshot)
     {
         _autoWalk = walk;
         _autoAttackNearest = attackNearest;
         _autoCastSlot = castSlot;
+        _openOptions = openOptions;
         _commands = commands;
         _targets = targets;
         _cast = cast;
+        _basicInfo = basicInfo;
         _screenshot = screenshot;
     }
 
-    /// O fim de "entrou no mundo": a caminhada pedida e a captura agendada.
+    /// O fim de "entrou no mundo": a caminhada pedida, a janela de opções e a
+    /// captura agendada.
     public void OnEnteredWorld()
     {
         if (_autoWalk != null)
         {
             GD.Print($"[teste] pedindo caminhada para ({_autoWalk.Value.X}, {_autoWalk.Value.Y})");
             _commands.RequestWalk(_autoWalk.Value.X, _autoWalk.Value.Y);
+        }
+        // Pela engrenagem, e não abrindo a janela direto: a captura prova a
+        // ligação real entre o botão e a janela.
+        if (_openOptions)
+        {
+            GD.Print("[teste] abrindo a janela de opções");
+            _basicInfo.RequestOptions();
         }
         // Tempo para o mapa e os sprites desenharem e, num teste com vários
         // clientes, para todos estarem no mundo ao mesmo tempo.

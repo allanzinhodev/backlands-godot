@@ -32,6 +32,9 @@ public sealed partial class Main : Node3D
     private IStatusLine _status = null!;
     private Hud _hud = null!;
     private SkillBar _skillBar = null!;
+    private BasicInfoWindow _basicInfo = null!;
+    private Minimap _minimap = null!;
+    private OptionsWindow _options = null!;
 
     private TargetSelection _targets = null!;
     private CastController _cast = null!;
@@ -43,9 +46,9 @@ public sealed partial class Main : Node3D
     /// Monta tudo e aplica a linha de comando.
     ///
     /// Filhos de Main, NESTA ordem: WorldEnvironment, Sun, Camera, Ui
-    /// (LoginPanel, SkillBar, Hud), MapRenderer, Entities, GameSession (que
-    /// cria o NetworkClient). SpritePreview e os Vfx_* entram depois, quando
-    /// pedidos.
+    /// (LoginPanel, SkillBar, Hud, BasicInfo, Minimap, Options), MapRenderer,
+    /// Entities, GameSession (que cria o NetworkClient). SpritePreview e os
+    /// Vfx_* entram depois, quando pedidos.
     /// </summary>
     public override void _Ready()
     {
@@ -76,12 +79,16 @@ public sealed partial class Main : Node3D
         _cast = new CastController(world, _worldView, _targets, _status, this);
         _screenshot = new ScreenshotCapture(options.ScreenshotPath, options.ScreenshotDelayFrames);
         _autoPilot = new AutoPilot(options.Walk, options.AttackNearest, options.CastSlot,
-                                   _session, _targets, _cast, _screenshot);
+                                   options.OpenOptions, _session, _targets, _cast, _basicInfo,
+                                   _screenshot);
         _input = new InputController(world, _session, _cameraRig, _targets, _cast,
                                      captureRun: _screenshot.Enabled);
 
         _loginPanel.ConnectRequested += _session.ConnectAndLogin;
         _skillBar.SlotTriggered += _cast.Trigger;
+        _basicInfo.OptionsRequested += OnOptionsRequested;
+        _options.HelpToggled += OnHelpToggled;
+        _options.DisconnectRequested += OnDisconnectRequested;
 
         // Um assinante por evento: a sequência de cada reação está escrita
         // dentro do handler, e não espalhada pela ordem das assinaturas.
@@ -92,7 +99,7 @@ public sealed partial class Main : Node3D
         world.EntityWalkStarted += _worldView.OnEntityWalk;
         world.EntityStopped += _worldView.OnEntityStopped;
         world.LoginRejected += OnLoginRejected;
-        world.EntityAttacked += _worldView.OnEntityAttacked;
+        world.EntityAttacked += OnEntityAttacked;
         world.EntityDied += OnEntityDied;
         world.EntityRespawned += OnEntityRespawned;
         world.AttackRejected += OnAttackRejected;
@@ -176,6 +183,37 @@ public sealed partial class Main : Node3D
 
         _hud = new Hud();
         layer.AddChild(_hud);
+
+        // As janelas do Ragnarok nascem escondidas: aparecem ao entrar no
+        // mundo, e a de opções só quando a engrenagem (ou --open-options) pede.
+        _basicInfo = new BasicInfoWindow();
+        layer.AddChild(_basicInfo);
+
+        _minimap = new Minimap();
+        layer.AddChild(_minimap);
+
+        _options = new OptionsWindow();
+        layer.AddChild(_options);
+    }
+
+    // --- Opções ------------------------------------------------------------
+
+    /// A engrenagem: abre com a caixa da ajuda no estado REAL do HUD, ou fecha.
+    private void OnOptionsRequested()
+    {
+        _options.Toggle(_hud.Visible);
+    }
+
+    private void OnHelpToggled(bool visible)
+    {
+        _hud.Visible = visible;
+    }
+
+    /// "Desconectar" volta ao login: a sessão derruba a conexão e avisa por
+    /// Disconnected, que é o mesmo caminho de uma queda de rede.
+    private void OnDisconnectRequested()
+    {
+        _session.Disconnect();
     }
 
     // --- Conexão -----------------------------------------------------------
@@ -192,6 +230,10 @@ public sealed partial class Main : Node3D
         _loginPanel.ShowDisconnected(reason);
         _hud.Visible = false;
         _skillBar.Visible = false;
+        _basicInfo.Visible = false;
+        _minimap.Visible = false;
+        _minimap.Clear();
+        _options.Close();
         _worldView.Clear();
     }
 
@@ -206,6 +248,7 @@ public sealed partial class Main : Node3D
     {
         var map = _session.World.Map;
         _mapRenderer.Build(map);
+        _minimap.SetMap(map);
         GD.Print($"[teste] mapa '{map.Name}' {map.Width}x{map.Height} recebido");
     }
 
@@ -215,6 +258,8 @@ public sealed partial class Main : Node3D
         _status.StatusText = string.Empty;
         _hud.Visible = true;
         _skillBar.Visible = true;
+        _basicInfo.Show(entity);
+        _minimap.Visible = true;
 
         _worldView.Add(entity, isLocal: true);
         _cameraRig.Follow(GridSpace.CellToWorld(entity.CellX, entity.CellY));
@@ -248,12 +293,26 @@ public sealed partial class Main : Node3D
         UpdateHud();
     }
 
+    /// A view primeiro (golpe, dano flutuante, barra sobre a cabeça) e, se o
+    /// alvo é o próprio jogador, a janela básica acompanha a vida nova.
+    private void OnEntityAttacked(RemoteEntity? source, RemoteEntity target, int damage,
+                                  int motionMs)
+    {
+        _worldView.OnEntityAttacked(source, target, damage, motionMs);
+
+        if (target.Id == _session.World.LocalEntityId)
+        {
+            _basicInfo.Refresh(target);
+        }
+    }
+
     private void OnEntityDied(RemoteEntity dead, RemoteEntity? killer)
     {
         _worldView.ShowDeath(dead);
 
         if (dead.Id == _session.World.LocalEntityId)
         {
+            _basicInfo.Refresh(dead);
             _status.StatusText = "Você morreu. Renascendo...";
             _status.StatusVisible = true;
             _cast.Cancel("morreu");
@@ -271,6 +330,7 @@ public sealed partial class Main : Node3D
 
         if (entity.Id == _session.World.LocalEntityId)
         {
+            _basicInfo.Refresh(entity);
             _status.StatusText = string.Empty;
             _status.StatusVisible = false;
         }
@@ -289,15 +349,19 @@ public sealed partial class Main : Node3D
 
         // Mostra a célula sob a posição VISUAL, não a autoritativa: durante uma
         // caminhada a autoritativa já é o destino, e exibi-la pareceria que o
-        // personagem teleportou.
+        // personagem teleportou. O minimapa recebe a mesma posição, fracionária,
+        // para o ponto deslizar junto com o personagem.
         (int X, int Y)? cell = null;
+        Vector2? localCellPosition = null;
         if (local != null && _worldView.TryGetView(local.Id, out var view))
         {
             cell = GridSpace.WorldToCell(view.Position);
+            localCellPosition = GridSpace.WorldToCellPosition(view.Position);
         }
 
         var target = _targets.TargetId == 0 ? null : world.Find(_targets.TargetId)?.Name;
         _hud.Refresh(world.MapName, cell, local, world.Entities.Count, target);
+        _minimap.Refresh(world, localCellPosition);
     }
 
     // --- Entrada -----------------------------------------------------------

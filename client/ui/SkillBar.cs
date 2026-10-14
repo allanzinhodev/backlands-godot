@@ -71,6 +71,11 @@ public sealed partial class SkillBar : Control
 
     private const int BottomMargin = 16;
 
+    /// A faixa que a barra ocupa a partir da borda de baixo da tela. O que
+    /// precisa ficar acima dela (o HUD de texto) mede daqui, em vez de
+    /// repetir os números e desencontrar quando a barra mudar.
+    public const int BottomLine = SlotSize + BottomMargin;
+
     private Control BuildSlot(int index, SkillSlot slot)
     {
         var panel = new Panel
@@ -81,17 +86,9 @@ public sealed partial class SkillBar : Control
             MouseFilter = MouseFilterEnum.Stop,
         };
 
-        var style = new StyleBoxFlat
-        {
-            BgColor = new Color(0.07f, 0.07f, 0.10f, 0.85f),
-            BorderColor = new Color(0.45f, 0.42f, 0.35f),
-            CornerRadiusTopLeft = 3,
-            CornerRadiusTopRight = 3,
-            CornerRadiusBottomLeft = 3,
-            CornerRadiusBottomRight = 3,
-        };
-        style.SetBorderWidthAll(1);
-        panel.AddThemeStyleboxOverride("panel", style);
+        // O mesmo painel das janelas (UiStyle), para a barra e elas parecerem
+        // uma peça só.
+        panel.AddThemeStyleboxOverride("panel", UiStyle.Panel());
 
         var icon = new TextureRect
         {
@@ -112,10 +109,7 @@ public sealed partial class SkillBar : Control
             Text = $"F{index + 1}",
             MouseFilter = MouseFilterEnum.Ignore,
         };
-        key.AddThemeFontSizeOverride("font_size", 11);
-        key.AddThemeColorOverride("font_color", new Color(0.95f, 0.92f, 0.75f));
-        key.AddThemeColorOverride("font_outline_color", new Color(0, 0, 0));
-        key.AddThemeConstantOverride("outline_size", 4);
+        UiStyle.StyleLabel(key, UiStyle.FontSmall, UiStyle.Text, outline: 4);
         key.Position = new Vector2(3, SlotSize - 17);
         panel.AddChild(key);
 

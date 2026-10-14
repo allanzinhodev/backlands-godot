@@ -47,7 +47,7 @@ app     Main (composição) e LaunchOptions           -> tudo
 dev     pré-visualizações, piloto automático, captura -> tudo menos app
 game    sessão e decisões do jogador                  -> model, net, scene, ui
 scene   nós 3D (câmera, mapa, entidades, efeitos)     -> model, art
-ui      Controls 2D (login, HUD, barra de skills)     -> model, art
+ui      Controls 2D (login, HUD, barra de skills, janela básica, minimapa, opções) -> model, art
 art     folhas de sprite, efeitos, shaders            -> model
 net     socket, framing, codec                        -> model
 model   estado puro do mundo                          -> nada (sem `using Godot`)

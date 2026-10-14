@@ -47,6 +47,15 @@ public sealed partial class SpritePreview : Node3D
         hud.Visible = true;
         hud.Text = $"pré-visualização da folha '{key}'";
 
+        // Em jogo o HUD mora embaixo, acima da barra de skills; aqui não há
+        // barra nem janela básica, e a legenda volta ao canto superior esquerdo
+        // onde sempre esteve, para a captura deste modo seguir comparável com
+        // as antigas. Crescendo para BAIXO, senão o texto subiria para fora da
+        // tela a partir do canto.
+        hud.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.TopLeft);
+        hud.GrowVertical = Control.GrowDirection.End;
+        hud.Position = new Vector2(12, 8);
+
         camera.Projection = Camera3D.ProjectionType.Orthogonal;
         camera.Size = 9.0f;
         camera.RotationDegrees = Vector3.Zero;

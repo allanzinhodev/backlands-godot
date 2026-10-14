@@ -18,6 +18,11 @@ public static class GridSpace
 
     public static (int X, int Y) WorldToCell(Vector3 p) => (Mathf.FloorToInt(p.X), Mathf.FloorToInt(p.Z));
 
+    /// A célula FRACIONÁRIA sob um ponto do mundo: o centro da célula (3, 4)
+    /// é (3,5, 4,5). Para o minimapa seguir a posição interpolada do
+    /// personagem em vez de saltar de célula em célula.
+    public static Vector2 WorldToCellPosition(Vector3 p) => new(p.X, p.Z);
+
     /// Qual das 8 direções lógicas mais aponta de `from` para `to`.
     public static Direction FacingTowards(Vector3 from, Vector3 to)
     {
