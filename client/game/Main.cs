@@ -44,6 +44,16 @@ public sealed partial class Main : Node3D
     /// Ponto para onde a câmera olha, em mundo.
     private Vector3 _cameraPivot;
 
+    // Quanto dura a volta à isométrica no duplo clique. Curto o bastante para
+    // não parecer que a câmera travou, longo o bastante para o olho acompanhar
+    // de onde ela veio — que é o ponto de animar em vez de saltar.
+    private const double CameraResetSeconds = 0.35;
+
+    private Vector3 _cameraResetFrom;
+
+    /// Tempo decorrido da volta; negativo quer dizer que não há volta em curso.
+    private double _cameraResetElapsed = -1.0;
+
     // --- Conjuro -----------------------------------------------------------
 
     /// Quanto dura o conjuro das skills de teste.
@@ -976,6 +986,7 @@ public sealed partial class Main : Node3D
     public override void _Process(double delta)
     {
         _now += delta;
+        AdvanceCameraReset(delta);
         AdvanceCast();
         AdvanceAutoCast();
 
@@ -1046,15 +1057,60 @@ public sealed partial class Main : Node3D
     /// duas desenhadas e as outras seis saem de espelho — por isso a pose é
     /// projetada na base viva da câmera a cada quadro, e não tabelada.
     /// </summary>
-    /// Volta a câmera para a isométrica de partida.
+    /// Começa a volta suave para a isométrica de partida.
     private void ResetCamera()
     {
-        _cameraAngles = CameraAngles;
+        _cameraResetFrom = _cameraAngles;
+        _cameraResetElapsed = 0.0;
+    }
+
+    /// <summary>
+    /// Leva a câmera de volta à isométrica ao longo de
+    /// <see cref="CameraResetSeconds"/>.
+    ///
+    /// A guinada é interpolada pelo MENOR giro, não pela diferença crua: parado
+    /// em 350° e voltando para 45°, a diferença crua manda girar 305° para o
+    /// lado errado — a tela daria quase uma volta inteira para andar 55°.
+    /// </summary>
+    private void AdvanceCameraReset(double delta)
+    {
+        if (_cameraResetElapsed < 0.0)
+        {
+            return;
+        }
+
+        _cameraResetElapsed += delta;
+        var t = (float)System.Math.Clamp(_cameraResetElapsed / CameraResetSeconds, 0.0, 1.0);
+        // Suave nas duas pontas: sair e chegar devagar lê como a câmera sendo
+        // reposicionada, enquanto a velocidade constante lê como um defeito.
+        var eased = t * t * (3.0f - 2.0f * t);
+
+        _cameraAngles.X = Mathf.Lerp(_cameraResetFrom.X, CameraAngles.X, eased);
+        _cameraAngles.Y = Mathf.Wrap(
+            _cameraResetFrom.Y + ShortestTurn(_cameraResetFrom.Y, CameraAngles.Y) * eased,
+            0.0f, 360.0f);
+
+        if (t >= 1.0f)
+        {
+            // Fecha no valor exato: a interpolação pararia a frações de grau do
+            // alvo, e a referência da arte é conferida contra ESTE ângulo.
+            _cameraAngles = CameraAngles;
+            _cameraResetElapsed = -1.0;
+        }
+
         ApplyCameraAngles();
     }
 
+    /// Menor giro, com sinal, que leva de um ângulo a outro em graus.
+    private static float ShortestTurn(float from, float to) =>
+        Mathf.Wrap(to - from + 180.0f, 0.0f, 360.0f) - 180.0f;
+
     private void RotateCamera(Vector2 dragPixels)
     {
+        // Arrastar toma o controle de volta: insistir na volta enquanto o
+        // jogador gira faria a câmera lutar contra a mão dele.
+        _cameraResetElapsed = -1.0;
+
         _cameraAngles.Y -= dragPixels.X * CameraDragDegrees;
         _cameraAngles.X = Mathf.Clamp(
             _cameraAngles.X - dragPixels.Y * CameraDragDegrees,
