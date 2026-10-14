@@ -130,14 +130,30 @@ O fluxo imita o do Ragnarok:
    no piso e não billboard: um anel billboard viraria argola em pé.
 2. **Conjurar** — F1–F12 inicia **meio segundo** de conjuro. O personagem entra
    na pose `Cast` (que estava carregada das folhas e nunca era usada) virado
-   para o alvo, com uma **barra** acima da de vida.
+   para o alvo, com o **nome da skill** e uma **barra preta enchendo de verde**
+   acima da cabeça — é assim que o Ragnarok desenha, e é metade do
+   reconhecimento visual.
 3. **Soltar** — ao fim, o efeito sai na posição **interpolada do alvo**, não na
    célula: se ele estiver andando, a célula já é o destino e o efeito sairia à
    frente dele.
 
-Cancela o conjuro: **andar**, **atacar**, **trocar de alvo**, o **alvo morrer ou
-sumir**, e **morrer**. O alvo é conferido duas vezes — no início e no fim —
-porque meio segundo é tempo bastante para ele deixar de existir.
+**Andar e atacar não cancelam: eles são ignorados.** Esse é o ponto em que é
+fácil errar copiando de memória. No Ragnarok, conjurar não é interrompido por
+movimento — movimento é *proibido* enquanto o conjuro dura, e o pedido
+simplesmente não acontece (no rAthena, `unit_can_move` devolve falso durante o
+cast; o pedido não vira cancelamento). Com meio segundo a diferença é enorme:
+ignorar faz o personagem plantar os pés e soltar a skill, enquanto cancelar
+perderia o conjuro a cada clique apressado. Outra skill durante o conjuro também
+é ignorada.
+
+O que de fato encerra o conjuro: o **alvo morrer ou sumir** e o **conjurador
+morrer**. O alvo é conferido no início *e* no fim, porque meio segundo é tempo
+bastante para ele deixar de existir. No Ragnarok isso aborta **em silêncio**, sem
+mensagem de erro, e aqui também.
+
+Uma divergência consciente: o Ragnarok clássico **não mostra alvo nenhum** — não
+há tab-target nem retículo, e é reconhecidamente confuso. Com a câmera girando no
+botão direito o jogador perde referência espacial, então o anel vale o custo.
 
 ### A mentira que isto conta
 

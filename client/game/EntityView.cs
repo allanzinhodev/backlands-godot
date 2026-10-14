@@ -47,6 +47,7 @@ public sealed partial class EntityView : Node3D
     private Sprite3D _hpBarFill = null!;
     private Sprite3D _castBarBack = null!;
     private Sprite3D _castBarFill = null!;
+    private Label3D _castLabel = null!;
     private Sprite3D _targetRing = null!;
     private Color _nameplateColor = Colors.White;
 
@@ -157,11 +158,28 @@ public sealed partial class EntityView : Node3D
         _hpBarBack = CreateBar(new Color(0.08f, 0.08f, 0.10f), 1.0f, 0.0f, BodyHeight * 1.22f);
         _hpBarFill = CreateBar(new Color(0.85f, 0.25f, 0.25f), 0.98f, 0.001f, BodyHeight * 1.22f);
 
-        // Acima da barra de vida, e escondida até alguém conjurar.
-        _castBarBack = CreateBar(new Color(0.08f, 0.08f, 0.10f), 1.0f, 0.0f, CastBarHeight);
-        _castBarFill = CreateBar(new Color(0.45f, 0.75f, 1.0f), 0.98f, 0.001f, CastBarHeight);
+        // Acima da barra de vida, e escondida até alguém conjurar. Preta
+        // enchendo de verde: é assim que a barra de conjuro do Ragnarok se
+        // parece, e é metade do reconhecimento visual.
+        _castBarBack = CreateBar(new Color(0.05f, 0.05f, 0.06f), 1.0f, 0.0f, CastBarHeight);
+        _castBarFill = CreateBar(new Color(0.35f, 0.9f, 0.35f), 0.98f, 0.001f, CastBarHeight);
         _castBarBack.Visible = false;
         _castBarFill.Visible = false;
+
+        // O nome da skill acima da cabeça, como no Ragnarok.
+        _castLabel = new Label3D
+        {
+            Name = "CastLabel",
+            Position = new Vector3(0, CastBarHeight + 0.22f, 0),
+            Billboard = BaseMaterial3D.BillboardModeEnum.Enabled,
+            FontSize = 40,
+            PixelSize = 0.006f,
+            Modulate = new Color(0.75f, 1.0f, 0.75f),
+            OutlineSize = 16,
+            NoDepthTest = true,
+            Visible = false,
+        };
+        AddChild(_castLabel);
 
         _targetRing = CreateTargetRing();
 
@@ -404,13 +422,15 @@ public sealed partial class EntityView : Node3D
     /// aqui é só a aparência. Como tudo que anima, o controle é por PRAZO e não
     /// pelo fim da animação: a pose de Cast tem um quadro só e nunca terminaria.
     /// </summary>
-    public void BeginCast(Direction facing, double seconds)
+    public void BeginCast(Direction facing, double seconds, string skillName)
     {
         if (_dead)
         {
             return;
         }
 
+        _castLabel.Text = skillName;
+        _castLabel.Visible = true;
         _renderFacing = facing;
         _castStartedAt = _now;
         _castUntil = _now + System.Math.Max(seconds, 0.001);
@@ -426,6 +446,7 @@ public sealed partial class EntityView : Node3D
         _castUntil = 0;
         _castBarBack.Visible = false;
         _castBarFill.Visible = false;
+        _castLabel.Visible = false;
     }
 
     public bool Casting => _castUntil > _now;

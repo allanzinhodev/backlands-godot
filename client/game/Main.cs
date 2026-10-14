@@ -682,6 +682,14 @@ public sealed partial class Main : Node3D
             return;
         }
 
+        // Uma skill de cada vez: no Ragnarok o conjuro também bloqueia outras
+        // skills, e sem isto apertar F2 no meio de F1 trocaria o efeito sem
+        // reiniciar a barra.
+        if (IsCasting)
+        {
+            return;
+        }
+
         if (VfxLibrary.Load(slot.VfxId) == null)
         {
             GD.Print($"[skills] F{index + 1} ({slot.Label}): efeito '{slot.VfxId}' indisponível");
@@ -704,9 +712,13 @@ public sealed partial class Main : Node3D
         _castTargetId = _targetId;
         _castEndsAt = _now + CastSeconds;
 
-        casterView.BeginCast(FacingTowards(casterView.Position, target.Position), CastSeconds);
+        casterView.BeginCast(
+            FacingTowards(casterView.Position, target.Position), CastSeconds, slot.Label);
         GD.Print($"[teste] F{index + 1} conjurando {slot.Label} em {_targetId}");
     }
+
+    /// Se o personagem local está conjurando agora.
+    private bool IsCasting => _castSlotIndex >= 0;
 
     /// A view do alvo atual, ou null se não há alvo, ele sumiu ou morreu.
     private EntityView? LivingTarget()
@@ -904,19 +916,26 @@ public sealed partial class Main : Node3D
         // Compara por CÉLULA e não por pixel: é a mesma unidade em que o
         // servidor decide alcance, então o que o jogador clica é o que o
         // servidor vê.
+        // Conjurando, o clique é IGNORADO — não cancela. No Ragnarok andar e
+        // atacar não interrompem o conjuro: eles são proibidos enquanto ele
+        // dura, e o pedido simplesmente não acontece. Com meio segundo de
+        // conjuro a diferença é grande: ignorar faz o personagem plantar os pés
+        // e soltar a skill, enquanto cancelar perderia o conjuro a cada clique
+        // apressado.
+        if (IsCasting)
+        {
+            return;
+        }
+
         var targetId = FindEntityAtCell(cell.Value.X, cell.Value.Y);
         if (targetId != 0)
         {
             // Seleciona E ataca: a seleção é o que as skills precisam, e trocar
             // o clique por "só seleciona" tiraria a única forma de atacar.
             SelectTarget(targetId);
-            CancelCast("atacou");
             _session.RequestAttack(targetId);
             return;
         }
-
-        // Andar cancela o conjuro, como no Ragnarok.
-        CancelCast("andou");
 
         // Manda só o DESTINO. Quem decide o caminho — e se ele existe — é o
         // servidor; aqui nem checamos se a célula é caminhável.
