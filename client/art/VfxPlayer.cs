@@ -31,6 +31,11 @@ public sealed partial class VfxPlayer : Node3D
 
     private float _lifetime = 1.0f;
 
+    /// Onde o efeito foi pedido, antes do desempate de profundidade.
+    private Vector3 _anchor;
+
+    private bool _onGround;
+
     /// Monta o nó do efeito. Quem chama adiciona à cena; o tempo de vida só
     /// começa a contar quando ele entra na árvore.
     public static VfxPlayer Create(VfxEffect effect, Vector3 position)
@@ -39,6 +44,8 @@ public sealed partial class VfxPlayer : Node3D
         {
             Name = $"Vfx_{effect.Id}",
             Position = position,
+            _anchor = position,
+            _onGround = effect.OnGround,
             _lifetime = effect.Loops ? LoopingSeconds : effect.Duration,
         };
 
@@ -74,16 +81,29 @@ public sealed partial class VfxPlayer : Node3D
         return node;
     }
 
-    public override void _Ready()
+    public override void _Process(double delta)
     {
-        // GlobalBasis.Z da câmera aponta para o observador: no Godot a câmera
-        // olha ao longo do -Z dela.
-        var camera = GetViewport().GetCamera3D();
-        if (camera != null)
+        // Recalculado a cada quadro, e não assado na posição ao nascer: o
+        // jogador gira a câmera, e um empurrão assado vale
+        // 0,05·cos(quanto girou) — zero ao girar 90°, NEGATIVO depois disso, e
+        // aí o personagem passa a abrir um buraco com forma de boneco no meio
+        // da explosão. Um círculo em loop vive tempo de sobra para isso.
+        if (_onGround)
         {
-            Position += camera.GlobalBasis.Z * DepthBias;
+            return; // o chão já o segura; empurrar o descolaria do piso
         }
 
+        var camera = GetViewport()?.GetCamera3D();
+        if (camera != null)
+        {
+            // GlobalBasis.Z da câmera aponta para o observador: no Godot a
+            // câmera olha ao longo do -Z dela.
+            Position = _anchor + camera.GlobalBasis.Z * DepthBias;
+        }
+    }
+
+    public override void _Ready()
+    {
         var sprite = GetNode<AnimatedSprite3D>("Sprite");
         sprite.Play(VfxEffect.AnimationName);
 

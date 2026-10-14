@@ -31,15 +31,18 @@ public sealed partial class Main : Node3D
     private const float CameraPitchMin = -80.0f;
     private const float CameraPitchMax = -20.0f;
 
+    // O sol acompanha a guinada da câmera com esta diferença, que é a que ele
+    // tinha quando estava preso no mundo — assim o ângulo padrão continua
+    // exatamente como era.
+    private const float SunPitch = -55.0f;
+    private const float SunYawFromCamera = -10.0f;
+
     /// Ângulos VIVOS da câmera. Tudo que precisa saber para onde ela olha lê
     /// daqui ou da base da própria câmera, nunca mais da constante acima.
     private Vector3 _cameraAngles = CameraAngles;
 
     /// Ponto para onde a câmera olha, em mundo.
     private Vector3 _cameraPivot;
-
-    /// Se o botão direito está arrastando agora.
-    private bool _rotatingCamera;
 
     // --- Conjuro -----------------------------------------------------------
 
@@ -70,6 +73,7 @@ public sealed partial class Main : Node3D
     private GameSession _session = null!;
     private MapRenderer _mapRenderer = null!;
     private Camera3D _camera = null!;
+    private DirectionalLight3D _sun = null!;
     private Node3D _entityRoot = null!;
 
     private LineEdit _hostField = null!;
@@ -203,7 +207,7 @@ public sealed partial class Main : Node3D
 
         // A câmera já foi montada em BuildEnvironment, antes de ler a linha de
         // comando; --camera só vale depois de reaplicar.
-        _camera.RotationDegrees = _cameraAngles;
+        ApplyCameraAngles();
 
         if (_mapPreview)
         {
@@ -250,7 +254,9 @@ public sealed partial class Main : Node3D
         _mapRenderer.Build(map);
         _loginPanel.Visible = false;
         _camera.Size = 39;
-        _camera.Position = new Vector3(16, 0, 16) + CameraOffset();
+        // Por FollowCamera, para o pivô nascer coerente com a posição: girar
+        // antes de o pivô existir saltaria a câmera para a origem do mapa.
+        FollowCamera(new Vector3(16, 0, 16));
         if (_screenshotPath != null) _framesUntilScreenshot = _screenshotDelayFrames;
     }
 
@@ -266,14 +272,14 @@ public sealed partial class Main : Node3D
         };
         AddChild(new WorldEnvironment { Name = "WorldEnvironment", Environment = environment });
 
-        var light = new DirectionalLight3D
+        _sun = new DirectionalLight3D
         {
             Name = "Sun",
-            RotationDegrees = new Vector3(-55.0f, 35.0f, 0.0f),
+            RotationDegrees = new Vector3(SunPitch, CameraAngles.Y + SunYawFromCamera, 0.0f),
             LightEnergy = 1.1f,
             ShadowEnabled = true,
         };
-        AddChild(light);
+        AddChild(_sun);
 
         _camera = new Camera3D
         {
@@ -862,16 +868,6 @@ public sealed partial class Main : Node3D
 
     // --- Entrada -----------------------------------------------------------
 
-    public override void _Notification(int what)
-    {
-        // Soltar o botão com a janela fora de foco não gera evento de soltura, e
-        // a câmera continuaria girando sozinha ao voltar.
-        if (what == NotificationWMWindowFocusOut)
-        {
-            _rotatingCamera = false;
-        }
-    }
-
     public override void _UnhandledInput(InputEvent @event)
     {
         if (!_session.World.InWorld)
@@ -886,17 +882,28 @@ public sealed partial class Main : Node3D
         {
             return;
         }
-        // Botão direito gira a câmera.
-        if (@event is InputEventMouseButton { ButtonIndex: MouseButton.Right } rightButton)
-        {
-            _rotatingCamera = rightButton.Pressed;
-            return;
-        }
+        // Botão direito gira a câmera. O estado vem do PRÓPRIO evento de
+        // movimento, não de uma trava ligada na descida e desligada na subida:
+        // um Control com MouseFilter.Stop engole o evento antes daqui, e os
+        // slots da barra de skills são Stop — soltar o botão em cima de um
+        // deles nunca desligaria a trava, e o mundo passaria a girar com o
+        // mouse solto. Ler a máscara é autocorretivo.
         if (@event is InputEventMouseMotion motion)
         {
-            if (_rotatingCamera)
+            if (motion.ButtonMask.HasFlag(MouseButtonMask.Right))
             {
                 RotateCamera(motion.Relative);
+            }
+            return;
+        }
+        if (@event is InputEventMouseButton { ButtonIndex: MouseButton.Right } rightButton)
+        {
+            // Duplo clique volta para a isométrica, como no Ragnarok: depois de
+            // girar um pouco é fácil perder a noção de onde fica o norte, e
+            // acertar 45° no arrasto é impossível.
+            if (rightButton.DoubleClick)
+            {
+                ResetCamera();
             }
             return;
         }
@@ -1039,6 +1046,13 @@ public sealed partial class Main : Node3D
     /// duas desenhadas e as outras seis saem de espelho — por isso a pose é
     /// projetada na base viva da câmera a cada quadro, e não tabelada.
     /// </summary>
+    /// Volta a câmera para a isométrica de partida.
+    private void ResetCamera()
+    {
+        _cameraAngles = CameraAngles;
+        ApplyCameraAngles();
+    }
+
     private void RotateCamera(Vector2 dragPixels)
     {
         _cameraAngles.Y -= dragPixels.X * CameraDragDegrees;
@@ -1051,7 +1065,23 @@ public sealed partial class Main : Node3D
         // sessão longa e perder precisão.
         _cameraAngles.Y = Mathf.Wrap(_cameraAngles.Y, 0.0f, 360.0f);
 
+        ApplyCameraAngles();
+    }
+
+    /// <summary>
+    /// Leva os ângulos vivos para a câmera, para a posição dela e para o sol.
+    ///
+    /// O sol gira JUNTO, mantendo a inclinação. Preso no mundo, ele estava
+    /// afinado para a guinada padrão: as sombras caem para longe do observador
+    /// a 45°, e para CIMA dele a 225° — cobrindo justo os tiles por onde se
+    /// anda, com cada árvore iluminada por trás. Metade do giro ficava chapada
+    /// e escura. Girando junto, a leitura é a mesma em qualquer ângulo.
+    /// </summary>
+    private void ApplyCameraAngles()
+    {
         _camera.RotationDegrees = _cameraAngles;
         _camera.Position = _cameraPivot + CameraOffset();
+        _sun.RotationDegrees = new Vector3(
+            SunPitch, _cameraAngles.Y + SunYawFromCamera, 0.0f);
     }
 }
