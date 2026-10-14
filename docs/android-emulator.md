@@ -7,6 +7,7 @@ no emulador; o renderizador desktop continua Mobile.
 O dispositivo criado para este teste se chama `Backlands_Test_API37`.
 Use aceleração gráfica Hardware/Host nas configurações do dispositivo.
 O driver SwiftShader do AVD anterior apresentou erros de limite de uniforms.
+O teste usa resolução de 720p e limite de 30 FPS para reduzir a carga no PC.
 
 Pré-requisitos: Godot 4.7.2 .NET, templates de exportação .NET da mesma
 versão, SDK Android e Java configurados em Editor Settings > Export > Android.

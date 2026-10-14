@@ -26,6 +26,9 @@ try {
         $Device = $devices[0]
     }
     Invoke-Checked $adb @('-s', $Device, 'get-state')
+    # Keep emulator graphics below the phone's native 1080p resolution.
+    Invoke-Checked $adb @('-s', $Device, 'shell', 'wm', 'size', '720x1280')
+    Invoke-Checked $adb @('-s', $Device, 'shell', 'wm', 'density', '240')
     Invoke-Checked $GodotExe @('--headless', '--path', $repo, '--import')
     Invoke-Checked $GodotExe @('--headless', '--path', $repo, '--export-debug', 'Android Emulator', $apk)
     Invoke-Checked $adb @('-s', $Device, 'install', '-r', $apk)

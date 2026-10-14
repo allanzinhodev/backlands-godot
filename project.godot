@@ -14,6 +14,7 @@ config/name="backlands-godot"
 run/main_scene="res://client/scenes/main.tscn"
 config/features=PackedStringArray("4.7", "Mobile")
 config/icon="res://icon.svg"
+run/max_fps.android_emulator=30
 
 [importer_defaults]
 
