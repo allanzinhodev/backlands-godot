@@ -70,12 +70,12 @@ A folha nunca define o ritmo: ela sobe com velocidade base 1, e quem decide é o
 `SpeedScale` **de cada entidade** — nunca `SpriteFrames.SetAnimationSpeed`, que é
 compartilhado entre todas as entidades do mesmo tipo e mudaria todo mundo na tela de uma vez.
 
-- **Walk** roda a **2 quadros por segundo, fixo** (`WalkFps`). Já foi casado com a velocidade
-  de andar, um ciclo por célula, o que mantinha o pé plantado no chão mas dava 13,3 fps no
-  jogador, 7,1 no lobo e 5 no slime — cada um com uma cadência, e todas corridas demais para
-  duas poses. O preço do ritmo fixo é o inverso: **o pé patina**, porque em 1 s de ciclo o
-  jogador atravessa quase 7 células. Com 2 poses não há como ter as duas coisas; o jeito de
-  recuperar o pé plantado é desenhar mais quadros de caminhada.
+- **Walk** segura cada quadro por **300 ms, fixo** (`WalkFrameMs`). Já foi casado com a
+  velocidade de andar, um ciclo por célula, o que mantinha o pé plantado no chão mas dava 75 ms
+  por quadro no jogador, 140 no lobo e 200 no slime — cada um com uma cadência, e todas
+  corridas demais para duas poses. O preço do ritmo fixo é o inverso: **o pé patina**, porque
+  o ciclo de 600 ms cobre 4 células andadas. Com 2 poses não há como ter as duas coisas; o
+  jeito de recuperar o pé plantado é desenhar mais quadros de caminhada.
 - **Attack** distribui seus quadros no `attack_motion_ms` da entidade (672 ms no Slime, 500 no
   Lobo). Como o golpe só repete a cada `attack_delay_ms` (1872 ms no Slime), **o último quadro
   fica segurado por mais de um segundo**. É o comportamento do Ragnarok — mas significa que o

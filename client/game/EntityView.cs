@@ -24,16 +24,16 @@ public sealed partial class EntityView : Node3D
     /// parar, e cada emenda de trecho daria um quadro de `idle`.
     private const double WalkHysteresisSeconds = 0.2;
 
-    /// Quadros por segundo da caminhada.
+    /// Quanto tempo cada quadro da caminhada fica na tela, em milissegundos.
     ///
     /// Fixo, e não mais casado com a velocidade de andar. O ritmo casado dava
-    /// 13,3 fps no jogador (150 ms/célula), 7,1 no lobo e 5 no slime — cada um
-    /// com uma cadência, e todas corridas demais para duas poses.
+    /// 75 ms por quadro no jogador (150 ms/célula), 140 no lobo e 200 no slime
+    /// — cada um com uma cadência, e todas corridas demais para duas poses.
     ///
-    /// O preço de fixar é o pé patinar: a 2 fps o ciclo leva 1 s e o jogador
-    /// atravessa quase 7 células nesse tempo, então a passada não acompanha
-    /// mais a distância percorrida.
-    private const float WalkFps = 2.0f;
+    /// O preço de fixar é o pé patinar: com 2 quadros de 300 ms o ciclo leva
+    /// 600 ms, tempo em que o jogador atravessa 4 células, então a passada não
+    /// acompanha mais a distância percorrida.
+    private const float WalkFrameMs = 300.0f;
 
     private readonly Queue<(Vector3 Position, Direction Facing)> _waypoints = new();
 
@@ -386,7 +386,7 @@ public sealed partial class EntityView : Node3D
         {
             // Ritmo fixo: a velocidade base da folha é 1, então a escala é o
             // próprio valor em quadros por segundo.
-            SpriteState.Walk => WalkFps,
+            SpriteState.Walk => 1000.0f / WalkFrameMs,
             // Os quadros do golpe cabem na duração que o servidor informou.
             SpriteState.Attack when _oneShotUntil > _now =>
                 (float)(frames / (_oneShotUntil - _now)),
