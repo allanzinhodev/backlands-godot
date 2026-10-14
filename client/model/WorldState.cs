@@ -90,7 +90,12 @@ public sealed class WorldState
         MapName = message.Map;
 
         var entity = new RemoteEntity(message.Id, message.Name, message.Sprite, message.X, message.Y,
-                                      message.Facing, EntityKind.Player, message.Hp, message.MaxHp);
+                                      message.Facing, EntityKind.Player, message.Hp, message.MaxHp)
+        {
+            // Só o local tem SP: é o único pacote que o traz.
+            Sp = message.Sp,
+            MaxSp = message.MaxSp,
+        };
         _entities[message.Id] = entity;
 
         EnteredWorld?.Invoke(entity);

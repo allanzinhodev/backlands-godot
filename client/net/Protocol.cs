@@ -19,5 +19,5 @@ public static class Protocol
     /// Versão do contrato; precisa bater com kProtocolVersion no servidor.
     /// Sem isto, um client desatualizado só descobriria o problema como
     /// "payload truncado", que não diz nada a quem está jogando.
-    public const ushort Version = 2;
+    public const ushort Version = 3;
 }

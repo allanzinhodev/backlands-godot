@@ -39,6 +39,16 @@ public sealed class RemoteEntity
     /// servidor, mas dividir por ele travaria o client.
     public float HpFraction => MaxHp <= 0 ? 0.0f : System.Math.Clamp((float)Hp / MaxHp, 0f, 1f);
 
+    /// SP só viaja para o próprio jogador (S_ENTER_WORLD): quem chega por
+    /// S_ENTITY_SPAWN fica com 0/0, e <see cref="SpFraction"/> devolve 0 nesse
+    /// caso. Ninguém a lê ainda; existe para a barra de SP seguir o mesmo
+    /// contrato da de HP quando as skills passarem a gastar SP.
+    public int Sp { get; internal set; }
+
+    public int MaxSp { get; internal set; }
+
+    public float SpFraction => MaxSp <= 0 ? 0.0f : System.Math.Clamp((float)Sp / MaxSp, 0f, 1f);
+
     /// Célula autoritativa: onde o servidor diz que a entidade está. A posição
     /// visual interpolada vive no nó da cena, não aqui.
     public int CellX { get; internal set; }

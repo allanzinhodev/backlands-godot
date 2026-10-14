@@ -178,6 +178,7 @@ MapDefinition load_map_from_lua(const std::string& path) {
             monster.name = entry.get_or("name", monster.species);
             monster.sprite = entry.get_or("sprite", std::string{});
             monster.max_hp = entry.get_or("max_hp", monster.max_hp);
+            monster.max_sp = entry.get_or("max_sp", monster.max_sp);
             monster.attack_min = entry.get_or("attack_min", monster.attack_min);
             monster.attack_max = entry.get_or("attack_max", monster.attack_max);
             monster.defense_percent = entry.get_or("defense_percent", monster.defense_percent);
@@ -195,6 +196,10 @@ MapDefinition load_map_from_lua(const std::string& path) {
             if (monster.max_hp <= 0) {
                 throw std::runtime_error(
                     std::format("mapa: monstro '{}' com max_hp <= 0", monster.species));
+            }
+            if (monster.max_sp < 0) {
+                throw std::runtime_error(
+                    std::format("mapa: monstro '{}' com max_sp < 0", monster.species));
             }
             definition.monsters.push_back(std::move(monster));
         }

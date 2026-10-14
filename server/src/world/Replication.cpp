@@ -32,6 +32,9 @@ std::vector<std::byte> make_enter_world_frame(const game::Entity& entity,
     writer.write_u8(static_cast<std::uint8_t>(entity.facing));
     writer.write_i32(entity.stats.hp);
     writer.write_i32(entity.stats.max_hp);
+    // SP só viaja aqui: é recurso do próprio jogador, os outros não o veem.
+    writer.write_i32(entity.stats.sp);
+    writer.write_i32(entity.stats.max_sp);
     writer.write_string(entity.sprite);
     writer.write_string(map_name);
     writer.write_string(entity.name);

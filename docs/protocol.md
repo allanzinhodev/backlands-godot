@@ -35,7 +35,7 @@ Direção dos opcodes: `C_*` = client→server (0x0001–0x0FFF), `S_*` = server
 | 0x0003 | C_WALK_TO | `uint16 x`, `uint16 y` (célula destino) | M4 |
 | 0x0004 | C_ATTACK | `uint32 entity_id` (alvo) | M5 |
 | 0x1001 | S_PONG | `uint32 nonce` | M2 |
-| 0x1002 | S_ENTER_WORLD | `uint32 entity_id`, `uint16 x`, `uint16 y`, `uint8 dir`, `int32 hp`, `int32 hp_max`, `string sprite`, `string mapa`, `string nome` | M3/M5/M6 |
+| 0x1002 | S_ENTER_WORLD | `uint32 entity_id`, `uint16 x`, `uint16 y`, `uint8 dir`, `int32 hp`, `int32 hp_max`, `int32 sp`, `int32 sp_max`, `string sprite`, `string mapa`, `string nome` | M3/M5/M6 |
 | 0x1003 | S_LOGIN_FAILED | `uint8 motivo` | M3 |
 | 0x1004 | S_ENTITY_SPAWN | `uint32 entity_id`, `uint16 x`, `uint16 y`, `uint8 dir`, `uint8 tipo`, `int32 hp`, `int32 hp_max`, `string sprite`, `string nome` | M3/M5/M6 |
 | 0x1005 | S_ENTITY_DESPAWN | `uint32 entity_id` | M3 |
@@ -73,10 +73,11 @@ usa as flags apenas para desenhar e dar feedback de cursor — **nunca** para de
 
 ### Versão do protocolo
 
-`C_LOGIN` abre com um `uint16` de versão (**hoje 2**), conferido contra `kProtocolVersion` em
+`C_LOGIN` abre com um `uint16` de versão (**hoje 3**), conferido contra `kProtocolVersion` em
 `server/src/protocol/Protocol.hpp`. Sem ele, um client desatualizado só descobriria o problema como
 "payload truncado", que não diz nada a quem está jogando. A versão sobe a cada mudança
-incompatível de pacote.
+incompatível de pacote. A versão 3 acrescentou `sp` e `sp_max` ao `S_ENTER_WORLD`: SP é o
+recurso das skills, do próprio jogador, por isso só viaja nesse pacote.
 
 ### A direção é sempre do servidor
 

@@ -162,6 +162,33 @@ TEST_CASE("mapa inválido falha no load, não em produção") {
         )");
         CHECK_THROWS_WITH(load_map_from_lua(map.path()), ContainsSubstring("name"));
     }
+
+    SECTION("monstro com max_hp <= 0") {
+        // Nasceria morto e nunca sairia do respawn.
+        const TempMap map(R"(
+            return {
+              name = "x", spawn = { x = 0, y = 0 },
+              legend = { ["."] = { terrain = "grass", walkable = true } },
+              rows = { "..." },
+              monsters = { slime = { max_hp = 0 } },
+            }
+        )");
+        CHECK_THROWS_WITH(load_map_from_lua(map.path()), ContainsSubstring("max_hp"));
+    }
+
+    SECTION("monstro com max_sp negativo") {
+        // Zero é válido (monstro sem SP); negativo é erro de digitação do
+        // autor do mapa e viraria uma barra sem sentido.
+        const TempMap map(R"(
+            return {
+              name = "x", spawn = { x = 0, y = 0 },
+              legend = { ["."] = { terrain = "grass", walkable = true } },
+              rows = { "..." },
+              monsters = { slime = { max_sp = -1 } },
+            }
+        )");
+        CHECK_THROWS_WITH(load_map_from_lua(map.path()), ContainsSubstring("max_sp"));
+    }
 }
 
 // --- O mapa real do repositório --------------------------------------------
@@ -297,6 +324,8 @@ TEST_CASE("os monstros de starter_fields nascem nas mesmas células a cada execu
             CHECK(monster->name == tmpl->name);
             CHECK(monster->stats.hp == tmpl->max_hp);
             CHECK(monster->stats.max_hp == tmpl->max_hp);
+            CHECK(monster->stats.sp == tmpl->max_sp);
+            CHECK(monster->stats.max_sp == tmpl->max_sp);
             CHECK(monster->walk.speed_ms_per_cell == tmpl->walk_speed_ms);
             CHECK(monster->brain.respawn_delay_ms == tmpl->respawn_delay_ms);
             CHECK(monster->sprite == (tmpl->sprite.empty() ? tmpl->species : tmpl->sprite));

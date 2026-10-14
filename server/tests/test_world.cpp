@@ -121,10 +121,25 @@ TEST_CASE("login manda mapa, identidade e quem já estava, nesta ordem") {
 
     const Frame& enter = frames[1 + height];
     REQUIRE(opcode_of(enter) == raw(ServerOpcode::EnterWorld));
+    const Entity* player = f.world.entities().find(id);
+    REQUIRE(player != nullptr);
     auto reader = payload_of(enter);
     CHECK(reader.read_u32() == id);
     CHECK(reader.read_u16() == 6);
     CHECK(reader.read_u16() == 16);
+    CHECK(reader.read_u8() == static_cast<std::uint8_t>(Direction::South));
+    CHECK(reader.read_i32() == player->stats.hp);
+    CHECK(reader.read_i32() == player->stats.max_hp);
+    // SP chega logo depois do HP: a janela básica mostra o valor do servidor,
+    // e um campo fora de lugar deslocaria as strings que vêm em seguida.
+    CHECK(reader.read_i32() == player->stats.sp);
+    CHECK(reader.read_i32() == player->stats.max_sp);
+    CHECK(player->stats.max_sp > 0);
+    CHECK(reader.read_string() == "player");
+    CHECK(reader.read_string() == "starter_fields");
+    CHECK(reader.read_string() == "Primeiro");
+    CHECK(reader.ok());
+    CHECK(reader.remaining() == 0);
 
     // Depois, um S_ENTITY_SPAWN para cada entidade que já estava (os monstros
     // do mapa); ninguém anda antes do primeiro tick, então não há S_ENTITY_WALK.

@@ -50,10 +50,15 @@ enum class EntityKind : std::uint8_t {
 };
 
 // Atributos de combate, no formato pré-renewal do Ragnarok. Todos vivem no
-// servidor; o client recebe só o que precisa mostrar (HP atual e máximo).
+// servidor; o client recebe só o que precisa mostrar (HP e SP, atuais e máximos).
 struct Stats {
     std::int32_t max_hp = 100;
     std::int32_t hp = 100;
+
+    // SP é o recurso das skills (GDD). Ainda nada o gasta nem o regenera, mas
+    // o valor nasce aqui: é o servidor que manda nele, e o client só mostra.
+    std::int32_t max_sp = 50;
+    std::int32_t sp = 50;
 
     // Faixa do golpe. O dano é sorteado nela, como os campos Attack/Attack2 do
     // mob_db: um valor fixo deixaria o combate monótono e previsível.

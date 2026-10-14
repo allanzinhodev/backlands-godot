@@ -25,6 +25,7 @@ std::vector<EntityId> advance_respawns(EntityRegistry& registry, Cell player_spa
 
         entity->combat.respawn_at_ms = 0;
         entity->stats.hp = entity->stats.max_hp;
+        entity->stats.sp = entity->stats.max_sp;
         entity->cell = entity->is_monster() ? entity->brain.home : player_spawn;
         entity->facing = Direction::South;
         entity->walk.clear();

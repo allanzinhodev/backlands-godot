@@ -51,6 +51,8 @@ int spawn_map_monsters(EntityRegistry& registry, const MapDefinition& map, Rng& 
 void apply_monster_template(Entity& monster, const MonsterTemplate& tmpl, Cell home) {
     monster.stats.max_hp = tmpl.max_hp;
     monster.stats.hp = tmpl.max_hp;
+    monster.stats.max_sp = tmpl.max_sp;
+    monster.stats.sp = tmpl.max_sp;
     monster.stats.attack_min = tmpl.attack_min;
     monster.stats.attack_max = tmpl.attack_max;
     monster.stats.defense_percent = tmpl.defense_percent;

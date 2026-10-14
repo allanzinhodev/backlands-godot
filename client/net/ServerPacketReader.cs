@@ -68,7 +68,8 @@ public static class ServerPacketReader
         return true;
     }
 
-    /// S_ENTER_WORLD: u32 id, u16 x, u16 y, u8 dir, string mapa, string nome.
+    /// S_ENTER_WORLD: u32 id, u16 x, u16 y, u8 dir, i32 hp, i32 hp_max, i32 sp,
+    /// i32 sp_max, string sprite, string mapa, string nome.
     public static bool TryReadEnterWorld(ref PacketReader reader, out ServerEvents.EnterWorld message)
     {
         var id = reader.ReadU32();
@@ -77,6 +78,8 @@ public static class ServerPacketReader
         var facing = reader.ReadU8();
         var hp = reader.ReadI32();
         var maxHp = reader.ReadI32();
+        var sp = reader.ReadI32();
+        var maxSp = reader.ReadI32();
         var sprite = reader.ReadString();
         var map = reader.ReadString();
         var name = reader.ReadString();
@@ -87,7 +90,8 @@ public static class ServerPacketReader
             return false;
         }
 
-        message = new ServerEvents.EnterWorld(id, x, y, (Direction)facing, hp, maxHp, sprite, map, name);
+        message = new ServerEvents.EnterWorld(id, x, y, (Direction)facing, hp, maxHp, sp, maxSp,
+                                              sprite, map, name);
         return true;
     }
 

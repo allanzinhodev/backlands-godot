@@ -18,6 +18,9 @@ struct MonsterTemplate {
     // Folha de sprites. Vazio = usa a própria species como chave.
     std::string sprite;
     std::int32_t max_hp = 50;
+
+    // Opcional no Lua: monstro não tem SP, a menos que a espécie declare.
+    std::int32_t max_sp = 0;
     std::int32_t attack_min = 7;
     std::int32_t attack_max = 10;
     std::int32_t defense_percent = 0;

@@ -482,6 +482,7 @@ TEST_CASE("renascer devolve vida cheia, em casa ou no ponto inicial, sem alvo ne
 
     for (Entity* dead : {&monster, &fallen}) {
         dead->stats.hp = 0;
+        dead->stats.sp = 0;
         dead->facing = Direction::North;
         dead->walk.path = {Direction::East};
         dead->combat.respawn_at_ms = 5000;
@@ -503,6 +504,7 @@ TEST_CASE("renascer devolve vida cheia, em casa ou no ponto inicial, sem alvo ne
     CHECK(fallen.cell == player_spawn);
     for (const Entity* back : {&monster, &fallen}) {
         CHECK(back->stats.hp == back->stats.max_hp);
+        CHECK(back->stats.sp == back->stats.max_sp);
         CHECK(back->combat.respawn_at_ms == 0);
         CHECK(back->facing == Direction::South);
         CHECK_FALSE(back->walk.walking());

@@ -29,7 +29,7 @@ $script:S_ENTITY_RESPAWN = 0x100C
 $script:S_ATTACK_REJECTED = 0x100D
 
 # Precisa bater com kProtocolVersion em server/src/protocol/Protocol.hpp.
-$script:PROTOCOL_VERSION = 2
+$script:PROTOCOL_VERSION = 3
 
 # Motivos de S_LOGIN_FAILED (protocol::LoginFailure).
 $script:LOGIN_FAIL_INVALID_NAME = 1
@@ -245,7 +245,7 @@ function Read-PayloadString {
 }
 
 # S_ENTER_WORLD: u32 id, u16 x, u16 y, u8 dir, i32 hp, i32 hp_max,
-#                string sprite, string mapa, string nome.
+#                i32 sp, i32 sp_max, string sprite, string mapa, string nome.
 function Read-EnterWorld {
     param([byte[]]$Payload)
     $id = Read-PayloadU32 -Payload $Payload -Offset 0
@@ -254,12 +254,15 @@ function Read-EnterWorld {
     $dir = Read-PayloadU8 -Payload $Payload -Offset $y.Next
     $hp = Read-PayloadI32 -Payload $Payload -Offset $dir.Next
     $maxHp = Read-PayloadI32 -Payload $Payload -Offset $hp.Next
-    $sprite = Read-PayloadString -Payload $Payload -Offset $maxHp.Next
+    $sp = Read-PayloadI32 -Payload $Payload -Offset $maxHp.Next
+    $maxSp = Read-PayloadI32 -Payload $Payload -Offset $sp.Next
+    $sprite = Read-PayloadString -Payload $Payload -Offset $maxSp.Next
     $map = Read-PayloadString -Payload $Payload -Offset $sprite.Next
     $name = Read-PayloadString -Payload $Payload -Offset $map.Next
     return [pscustomobject]@{
         EntityId = $id.Value; X = $x.Value; Y = $y.Value
         Direction = $dir.Value; Hp = $hp.Value; MaxHp = $maxHp.Value
+        Sp = $sp.Value; MaxSp = $maxSp.Value
         Sprite = $sprite.Value; Map = $map.Value; Name = $name.Value
         BytesRead = $name.Next
     }

@@ -16,7 +16,7 @@ public static class ServerEvents
     public readonly record struct MapRow(int Y, byte[] Cells);
 
     public readonly record struct EnterWorld(
-        uint Id, int X, int Y, Direction Facing, int Hp, int MaxHp,
+        uint Id, int X, int Y, Direction Facing, int Hp, int MaxHp, int Sp, int MaxSp,
         string Sprite, string Map, string Name);
 
     public readonly record struct EntitySpawn(
