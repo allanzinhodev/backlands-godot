@@ -59,7 +59,8 @@ public sealed partial class EntityView : Node3D
 
     // O que já está no sprite, para ApplyPose só mexer nele quando mudar.
     private SpriteState _appliedState;
-    private Direction _appliedFacing;
+    private SpritePose _appliedPose;
+    private bool _appliedFlip;
     private bool _applied;
 
     public uint EntityId { get; private set; }
@@ -344,15 +345,30 @@ public sealed partial class EntityView : Node3D
             return;
         }
 
-        if (_applied && _appliedState == _state && _appliedFacing == _renderFacing)
+        // Sem câmera não há como escolher a pose, e Create() chama isto antes de
+        // o nó entrar na árvore — aí GetViewport() é nulo. Sair sem aplicar é
+        // seguro porque _applied segue falso e o primeiro _Process resolve.
+        var camera = GetViewport()?.GetCamera3D();
+        if (camera == null)
+        {
+            return;
+        }
+
+        // A pose é comparada pelo RESULTADO, não pelos ingredientes: a câmera
+        // gira em jogo, e com o personagem parado nem o estado nem a direção
+        // mudariam — a pose ficaria congelada na guinada antiga e o sprite
+        // passaria a olhar para o lado errado.
+        var (pose, flip) = SpriteLayout.PoseFor(_renderFacing, camera.GlobalBasis);
+
+        if (_applied && _appliedState == _state && _appliedPose == pose && _appliedFlip == flip)
         {
             return;
         }
         _applied = true;
         _appliedState = _state;
-        _appliedFacing = _renderFacing;
+        _appliedPose = pose;
+        _appliedFlip = flip;
 
-        var (pose, flip) = SpriteLayout.PoseFor(_renderFacing);
         var animation = SpriteLayout.AnimationName(_state, pose);
 
         _sprite.FlipH = flip;

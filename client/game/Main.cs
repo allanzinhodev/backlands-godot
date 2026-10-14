@@ -16,8 +16,30 @@ namespace Backlands.Game;
 /// </summary>
 public sealed partial class Main : Node3D
 {
-    // Ângulos do Ragnarok: 45 graus de guinada e 45 de inclinação.
+    // Ângulos do Ragnarok: 45 graus de guinada e 45 de inclinação. É só o
+    // ponto de partida — o jogador gira a câmera com o botão direito.
     private static readonly Vector3 CameraAngles = new(-45.0f, 45.0f, 0.0f);
+
+    // Graus por pixel arrastado. Baixo de propósito: a câmera decide a pose de
+    // todo sprite da tela, e arrasto nervoso vira enxame de personagens trocando
+    // de frente para costas.
+    private const float CameraDragDegrees = 0.35f;
+
+    // A inclinação é presa longe dos extremos. De cima (-90°) nenhuma direção
+    // tem componente vertical na tela e as oito ficariam iguais; rente ao chão
+    // (0°) o mapa some numa linha.
+    private const float CameraPitchMin = -80.0f;
+    private const float CameraPitchMax = -20.0f;
+
+    /// Ângulos VIVOS da câmera. Tudo que precisa saber para onde ela olha lê
+    /// daqui ou da base da própria câmera, nunca mais da constante acima.
+    private Vector3 _cameraAngles = CameraAngles;
+
+    /// Ponto para onde a câmera olha, em mundo.
+    private Vector3 _cameraPivot;
+
+    /// Se o botão direito está arrastando agora.
+    private bool _rotatingCamera;
 
     // `size` de uma câmera ortogonal é a extensão VERTICAL em unidades, e
     // 1 unidade = 1 tile. 15 mostra 15 tiles de altura de tela — o chão,
@@ -51,6 +73,7 @@ public sealed partial class Main : Node3D
     //   --freeze-animations    congela a animação, para a captura ser comparável
     //   --sprite-preview=chave confere uma folha de sprites, sem servidor
     //   --cast=N               aciona o slot N da barra ao entrar no mundo
+    //   --camera=guinada,incl  começa com a câmera nesse ângulo, em graus
     //   --attack-nearest       ataca o monstro mais próximo assim que o vir
     private string? _autoLoginName;
     private (int X, int Y)? _autoWalk;
@@ -128,6 +151,19 @@ public sealed partial class Main : Node3D
             {
                 _autoCastSlot = slot;
             }
+            else if (arg.StartsWith("--camera=", System.StringComparison.Ordinal))
+            {
+                var parts = arg["--camera=".Length..].Split(',');
+                if (parts.Length == 2
+                    && float.TryParse(parts[0], System.Globalization.CultureInfo.InvariantCulture,
+                                      out var yaw)
+                    && float.TryParse(parts[1], System.Globalization.CultureInfo.InvariantCulture,
+                                      out var pitch))
+                {
+                    _cameraAngles = new Vector3(
+                        Mathf.Clamp(pitch, CameraPitchMin, CameraPitchMax), yaw, 0.0f);
+                }
+            }
             else if (arg == "--freeze-animations")
             {
                 EntityView.FreezeAnimations = true;
@@ -146,6 +182,10 @@ public sealed partial class Main : Node3D
                 _screenshotDelayFrames = Mathf.Max(frames, 1);
             }
         }
+
+        // A câmera já foi montada em BuildEnvironment, antes de ler a linha de
+        // comando; --camera só vale depois de reaplicar.
+        _camera.RotationDegrees = _cameraAngles;
 
         if (_mapPreview)
         {
@@ -222,7 +262,7 @@ public sealed partial class Main : Node3D
             Name = "Camera",
             Projection = Camera3D.ProjectionType.Orthogonal,
             Size = CameraSize,
-            RotationDegrees = CameraAngles,
+            RotationDegrees = _cameraAngles,
             // Ortogonal: a distância não muda o enquadramento, só precisa
             // passar do `near` e manter a cena dentro do `far`.
             Position = new Vector3(0, 30, 30),
@@ -307,15 +347,15 @@ public sealed partial class Main : Node3D
         _camera.RotationDegrees = Vector3.Zero;
         _camera.Position = new Vector3(0, 0, 12);
 
-        var preview = new SpritePreview(key) { Name = "SpritePreview" };
-        AddChild(preview);
-
-        // A tabela de direções é conferida contra a câmera REAL do jogo (e não
-        // a desta cena): mexer no ângulo da câmera muda quais direções são
-        // espelho de quais, e isso precisa aparecer como erro, não como arte
-        // sutilmente trocada.
+        // A conferência usa a câmera PADRÃO do jogo, não a desta cena nem a
+        // girada pelo jogador: a referência de poses foi escrita para a guinada
+        // de 45°, e é a convenção da arte que ela prende.
         var gameBasis = Basis.FromEuler(new Vector3(Mathf.DegToRad(CameraAngles.X),
                                                     Mathf.DegToRad(CameraAngles.Y), 0.0f));
+
+        var preview = new SpritePreview(key, gameBasis) { Name = "SpritePreview" };
+        AddChild(preview);
+
         preview.Problems.AddRange(SpriteLayout.VerifyAgainstCamera(gameBasis));
 
         if (preview.Problems.Count == 0)
@@ -636,6 +676,16 @@ public sealed partial class Main : Node3D
 
     // --- Entrada -----------------------------------------------------------
 
+    public override void _Notification(int what)
+    {
+        // Soltar o botão com a janela fora de foco não gera evento de soltura, e
+        // a câmera continuaria girando sozinha ao voltar.
+        if (what == NotificationWMWindowFocusOut)
+        {
+            _rotatingCamera = false;
+        }
+    }
+
     public override void _UnhandledInput(InputEvent @event)
     {
         if (!_session.World.InWorld)
@@ -650,6 +700,21 @@ public sealed partial class Main : Node3D
         {
             return;
         }
+        // Botão direito gira a câmera.
+        if (@event is InputEventMouseButton { ButtonIndex: MouseButton.Right } rightButton)
+        {
+            _rotatingCamera = rightButton.Pressed;
+            return;
+        }
+        if (@event is InputEventMouseMotion motion)
+        {
+            if (_rotatingCamera)
+            {
+                RotateCamera(motion.Relative);
+            }
+            return;
+        }
+
         if (@event is not InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.Left } click)
         {
             return;
@@ -738,23 +803,51 @@ public sealed partial class Main : Node3D
 
     private void CenterCameraOn(int cellX, int cellY)
     {
-        var target = MapRenderer.CellToWorld(cellX, cellY);
-        _camera.Position = target + CameraOffset();
+        FollowCamera(MapRenderer.CellToWorld(cellX, cellY));
     }
 
     private void FollowCamera(Vector3 target)
     {
+        // Guardado para o arrasto poder reposicionar a câmera sem esperar o
+        // próximo quadro: girar com o personagem parado não chamaria isto.
+        _cameraPivot = target;
         _camera.Position = target + CameraOffset();
     }
 
     /// Deslocamento que mantém os ângulos da câmera apontados para o alvo.
     /// Com projeção ortogonal a distância não altera o enquadramento.
-    private static Vector3 CameraOffset()
+    private Vector3 CameraOffset()
     {
         const float distance = 40.0f;
-        var basis = Basis.FromEuler(new Vector3(Mathf.DegToRad(CameraAngles.X),
-                                                Mathf.DegToRad(CameraAngles.Y), 0.0f));
+        // Dos ângulos VIVOS: lendo a constante, girar a câmera giraria a direção
+        // do olhar mas não de onde ela olha, e o alvo sairia do quadro.
+        var basis = Basis.FromEuler(new Vector3(Mathf.DegToRad(_cameraAngles.X),
+                                                Mathf.DegToRad(_cameraAngles.Y), 0.0f));
         // -Z é o "para frente" da câmera no Godot, então recuamos por +Z local.
         return basis * new Vector3(0, 0, distance);
+    }
+
+    /// <summary>
+    /// Gira a câmera com o arrasto do botão direito: horizontal guina, vertical
+    /// inclina.
+    ///
+    /// Girar a câmera muda qual pose cada personagem mostra, porque só existem
+    /// duas desenhadas e as outras seis saem de espelho — por isso a pose é
+    /// projetada na base viva da câmera a cada quadro, e não tabelada.
+    /// </summary>
+    private void RotateCamera(Vector2 dragPixels)
+    {
+        _cameraAngles.Y -= dragPixels.X * CameraDragDegrees;
+        _cameraAngles.X = Mathf.Clamp(
+            _cameraAngles.X - dragPixels.Y * CameraDragDegrees,
+            CameraPitchMin,
+            CameraPitchMax);
+
+        // A guinada é mantida em [0, 360) para não crescer sem limite numa
+        // sessão longa e perder precisão.
+        _cameraAngles.Y = Mathf.Wrap(_cameraAngles.Y, 0.0f, 360.0f);
+
+        _camera.RotationDegrees = _cameraAngles;
+        _camera.Position = _cameraPivot + CameraOffset();
     }
 }

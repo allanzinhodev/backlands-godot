@@ -18,9 +18,18 @@ public sealed partial class SpritePreview : Node3D
 
     private readonly string _key;
 
-    public SpritePreview(string key)
+    /// A base da câmera do JOGO, não a desta cena.
+    ///
+    /// A cena de conferência olha de frente, e de frente nenhuma direção tem
+    /// componente vertical — todas as oito sairiam de frente e a conferência não
+    /// mostraria nada. Quem decide pose e espelho é o ângulo em que o jogo
+    /// desenha, então é ele que entra aqui.
+    private readonly Basis _gameCameraBasis;
+
+    public SpritePreview(string key, Basis gameCameraBasis)
     {
         _key = key;
+        _gameCameraBasis = gameCameraBasis;
     }
 
     /// Problemas encontrados; vazio quer dizer que a folha está coerente.
@@ -39,12 +48,6 @@ public sealed partial class SpritePreview : Node3D
 
         BuildDirectionRow(sheet);
         BuildStateRow(sheet);
-    }
-
-    /// Confere a tabela de direções contra a câmera real da cena.
-    public void VerifyAgainstCamera(Camera3D camera)
-    {
-        Problems.AddRange(SpriteLayout.VerifyAgainstCamera(camera.GlobalBasis));
     }
 
     private void BuildEnvironment()
@@ -67,7 +70,7 @@ public sealed partial class SpritePreview : Node3D
         for (var d = 0; d < 8; d++)
         {
             var direction = (Direction)d;
-            var (pose, flip) = SpriteLayout.PoseFor(direction);
+            var (pose, flip) = SpriteLayout.PoseFor(direction, _gameCameraBasis);
             var x = (d - 3.5f) * Spacing;
 
             AddSprite(sheet, SpriteLayout.AnimationName(SpriteState.Idle, pose), flip,

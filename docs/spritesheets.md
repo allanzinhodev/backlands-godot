@@ -55,14 +55,25 @@ espelhamento horizontal cobre o lado direito:
 Se um dia a arte vier desenhada para o outro lado, basta trocar
 `SpriteLayout.ArtFacesScreenLeft` — todos os espelhamentos se invertem de uma vez.
 
-A câmera tem guinada de 45°, então a bússola lógica aparece girada na tela: a **pose** vem do
-componente vertical (descendo mostra a frente, subindo mostra as costas) e o **espelho** vem do
-horizontal — espelha quem aponta para o lado oposto àquele em que a arte foi desenhada. As duas
-direções de perfil puro (NorthEast e SouthWest) não têm componente vertical e usam `front`, que
-é como o personagem é mais visto.
+A tabela acima é o que se vê na guinada **padrão** de 45°, mas ela não é o que o jogo consulta:
+o jogador gira a câmera com o botão direito, e uma tabela fixa só valeria para o ângulo em que
+foi escrita — bastaria girar 90° para todo mundo passar a andar de costas.
 
-Mexer no ângulo da câmera muda quais direções são espelho de quais; por isso a tabela é
-conferida contra a câmera real e um desencontro vira erro visível, não arte sutilmente trocada.
+O que o jogo faz a cada quadro é **projetar** a direção nos eixos de tela da câmera viva: a
+**pose** vem do componente vertical (descendo mostra a frente, subindo mostra as costas) e o
+**espelho** vem do horizontal — espelha quem aponta para o lado oposto àquele em que a arte foi
+desenhada. Direção de perfil puro não tem componente vertical e usa `front`, que é como o
+personagem é mais visto.
+
+A tabela sobrevive como **referência conferida na inicialização** (`VerifyAgainstCamera`):
+ela prende a convenção da arte e a ordem do enum de direções, de modo que inverter
+`ArtFacesScreenLeft` ou reordenar o enum vira erro no log em vez de arte sutilmente trocada.
+Só vale com a câmera padrão — girar em jogo muda legitimamente quais direções são espelho de
+quais.
+
+Uma consequência que não é óbvia: a pose precisa ser comparada pelo **resultado**, não pelos
+ingredientes. Com o personagem parado, girar a câmera não muda nem o estado nem a direção, e um
+cache sobre esses dois deixaria o sprite olhando para o lado errado até ele andar de novo.
 
 ## Ritmo da animação
 

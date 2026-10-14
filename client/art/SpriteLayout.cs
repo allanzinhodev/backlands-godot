@@ -122,86 +122,98 @@ public static class SpriteLayout
     /// </summary>
     public const bool ArtFacesScreenLeft = true;
 
-    /// (pose, espelhar) para cada direção lógica.
+    /// Abaixo deste valor a projeção é tratada como zero. Perto do zero o sinal
+    /// é ruído de ponto flutuante, e decidir por ele faria a pose oscilar
+    /// enquanto o jogador gira a câmera devagar.
+    private const float Deadzone = 0.01f;
+
+    /// <summary>
+    /// (pose, espelhar) para uma direção lógica, do ponto de vista da câmera
+    /// dada.
+    ///
+    /// Calculado, e não tabelado: a câmera gira em jogo, e uma tabela só valeria
+    /// para a guinada em que foi escrita — bastaria girar 90° para todo mundo
+    /// passar a andar de costas.
     ///
     /// A pose vem do componente VERTICAL na tela (descendo mostra a frente,
     /// subindo mostra as costas) e o espelho vem do componente HORIZONTAL:
     /// espelha quem aponta para o lado OPOSTO àquele em que a arte foi
-    /// desenhada. As duas direções de perfil puro (NorthEast e SouthWest) não
-    /// têm componente vertical e usam a frente, que é como o personagem é
-    /// mais visto.
-    public static (SpritePose Pose, bool Flip) PoseFor(Direction direction)
+    /// desenhada. Direção de perfil puro não tem componente vertical e usa a
+    /// frente, que é como o personagem é mais visto.
+    /// </summary>
+    public static (SpritePose Pose, bool Flip) PoseFor(Direction direction, Godot.Basis cameraBasis)
     {
-        var (pose, pointsScreenRight) = direction switch
-        {
-            // Descem na tela: mostram a frente.
-            Direction.SouthEast => (SpritePose.Front, (bool?)null), // reto para baixo
-            Direction.South => (SpritePose.Front, false),
-            Direction.SouthWest => (SpritePose.Front, false),
-            Direction.East => (SpritePose.Front, true),
-            Direction.NorthEast => (SpritePose.Front, true),
+        var delta = WorldState.DirectionDeltas[(int)direction];
+        // Célula x vira eixo X do mundo; célula y vira eixo Z.
+        var world = new Godot.Vector3(delta.X, 0, delta.Y);
 
-            // Sobem na tela: mostram as costas.
-            Direction.NorthWest => (SpritePose.Back, (bool?)null), // reto para cima
-            Direction.West => (SpritePose.Back, false),
-            Direction.North => (SpritePose.Back, true),
+        var screenX = world.Dot(cameraBasis.Column0); // direita da tela, no mundo
+        var screenY = world.Dot(cameraBasis.Column1); // cima da tela, no mundo
 
-            _ => (SpritePose.Front, (bool?)null),
-        };
+        var pose = screenY < -Deadzone ? SpritePose.Front
+                 : screenY > Deadzone ? SpritePose.Back
+                 : SpritePose.Front;
 
-        // Direção sem componente horizontal é simétrica: espelhar não muda nada.
-        var flip = pointsScreenRight.HasValue
-                   && pointsScreenRight.Value == ArtFacesScreenLeft;
+        var flip = ArtFacesScreenLeft ? screenX > Deadzone : screenX < -Deadzone;
         return (pose, flip);
     }
 
+    /// O que a projeção DEVE dar na câmera padrão do jogo (guinada de 45°).
+    ///
+    /// Não é usada para desenhar: existe só para <see cref="VerifyAgainstCamera"/>
+    /// prender a convenção da arte. Se alguém inverter ArtFacesScreenLeft, trocar
+    /// a ordem do enum de direções ou mudar o ângulo padrão da câmera, isso vira
+    /// erro no log em vez de arte sutilmente trocada.
+    private static readonly (SpritePose Pose, bool Flip)[] ReferencePoses =
+    {
+        (SpritePose.Front, false), // South      — desce à esquerda
+        (SpritePose.Front, false), // SouthWest  — perfil para a esquerda
+        (SpritePose.Back, false),  // West       — sobe à esquerda
+        (SpritePose.Back, false),  // NorthWest  — reto para cima
+        (SpritePose.Back, true),   // North      — sobe à direita
+        (SpritePose.Front, true),  // NorthEast  — perfil para a direita
+        (SpritePose.Front, true),  // East       — desce à direita
+        (SpritePose.Front, false), // SouthEast  — reto para baixo
+    };
+
     /// <summary>
-    /// Confere a tabela acima contra a câmera de verdade e devolve o que estiver
-    /// errado. Mexer no ângulo da câmera muda quais direções são espelho de
-    /// quais — virando erro visível aqui, em vez de arte sutilmente trocada.
+    /// Confere a projeção contra a referência documentada e devolve o que
+    /// estiver errado.
+    ///
+    /// Só faz sentido com a câmera PADRÃO do jogo: a referência foi escrita para
+    /// a guinada de 45°, e girar a câmera em jogo muda legitimamente quais
+    /// direções são espelho de quais. Chame na inicialização, antes de qualquer
+    /// rotação — é o que prende a convenção da arte e a ordem do enum.
     /// </summary>
     public static List<string> VerifyAgainstCamera(Godot.Basis cameraBasis)
     {
         var problems = new List<string>();
 
-        var right = cameraBasis.Column0;  // direita da tela, no mundo
-        var up = cameraBasis.Column1;     // cima da tela, no mundo
-
         for (var d = 0; d < 8; d++)
         {
             var direction = (Direction)d;
-            var delta = WorldState.DirectionDeltas[d];
-            // Célula x vira eixo X do mundo; célula y vira eixo Z.
-            var world = new Godot.Vector3(delta.X, 0, delta.Y);
+            var expected = ReferencePoses[d];
+            var actual = PoseFor(direction, cameraBasis);
 
-            var screenX = world.Dot(right);
-            var screenY = world.Dot(up);
-
-            var expected = PoseFor(direction);
-            var poseFromScreen = screenY switch
-            {
-                < -0.01f => SpritePose.Front, // descendo: vem na direção da câmera
-                > 0.01f => SpritePose.Back,   // subindo: vai embora
-                _ => SpritePose.Front,        // perfil puro
-            };
-            // Espelha quem aponta para o lado oposto ao que a arte foi desenhada.
-            var flipFromScreen = ArtFacesScreenLeft ? screenX > 0.01f : screenX < -0.01f;
-
-            if (expected.Pose != poseFromScreen || expected.Flip != flipFromScreen)
+            if (expected != actual)
             {
                 problems.Add(
-                    $"{direction}: tabela diz ({expected.Pose}, espelho={expected.Flip}) mas a "
-                    + $"câmera projeta em ({poseFromScreen}, espelho={flipFromScreen})");
+                    $"{direction}: a referência diz ({expected.Pose}, espelho={expected.Flip}) "
+                    + $"mas esta câmera projeta em ({actual.Pose}, espelho={actual.Flip})");
             }
 
             // O espelho tem de ser a direção cuja projeção tem X oposto e Y igual.
-            var mirror = Mirror(direction);
-            var mirrorDelta = WorldState.DirectionDeltas[(int)mirror];
+            var delta = WorldState.DirectionDeltas[d];
+            var world = new Godot.Vector3(delta.X, 0, delta.Y);
+            var mirrorDelta = WorldState.DirectionDeltas[(int)Mirror(direction)];
             var mirrorWorld = new Godot.Vector3(mirrorDelta.X, 0, mirrorDelta.Y);
-            if (!Godot.Mathf.IsEqualApprox(mirrorWorld.Dot(right), -screenX)
-                || !Godot.Mathf.IsEqualApprox(mirrorWorld.Dot(up), screenY))
+
+            if (!Godot.Mathf.IsEqualApprox(mirrorWorld.Dot(cameraBasis.Column0),
+                                           -world.Dot(cameraBasis.Column0))
+                || !Godot.Mathf.IsEqualApprox(mirrorWorld.Dot(cameraBasis.Column1),
+                                              world.Dot(cameraBasis.Column1)))
             {
-                problems.Add($"{direction}: {mirror} não é o espelho dela nesta câmera");
+                problems.Add($"{direction}: {Mirror(direction)} não é o espelho dela nesta câmera");
             }
         }
 
