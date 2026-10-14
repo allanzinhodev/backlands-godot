@@ -12,12 +12,26 @@ MMORPG 2.5D estilo Ragnarok Online.
 ## Estrutura
 
 ```text
-client/                 cenas e scripts C# do jogo
+client/                 scripts C# do jogo, uma pasta por camada (pasta = namespace)
+  app/                  raiz de composição (Main) e linha de comando
+  model/                estado puro do mundo, sem Godot
+  net/                  socket, framing e codec dos pacotes
+  game/                 sessão e decisões do jogador (alvo, conjuro, entrada)
+  scene/                nós 3D: câmera, mapa, entidades, efeitos
+  art/                  folhas de sprite, efeitos e shaders
+  ui/                   painéis 2D: login, HUD, barra de skills
+  dev/                  pré-visualizações e captura de tela do playtest
 server/                 servidor C++ (CMake + vcpkg + Asio)
+  src/game/             regras puras (sem rede): grid, A*, movimento, combate, IA
+  src/world/            orquestra o tick e replica aos clientes (sem Asio)
+  src/protocol/         framing, opcodes e codec
+  src/net/, handlers/   transporte TCP e roteamento de pacotes
+  src/app/              main e game loop
 tools/oldtimes-docker/  emulador de referência (Docker)
-tools/export_grid/      exportador do grid lógico (Godot tool script)
-docs/                   GDD, protocolo, notas de estudo
+docs/                   GDD, protocolo, arquitetura, notas de estudo
 ```
+
+Quem pode depender de quem, e onde cada coisa nova entra: [docs/arquitetura.md](docs/arquitetura.md).
 
 ## Jogar / testar
 
