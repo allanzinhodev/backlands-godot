@@ -44,12 +44,25 @@ public sealed partial class Main : Node3D
     /// Ponto para onde a câmera olha, em mundo.
     private Vector3 _cameraPivot;
 
+    // Zoom pela roda do mouse. Em câmera ortogonal zoom é o `Size`: a extensão
+    // vertical em tiles. O passo é MULTIPLICATIVO, e não somado: tirar 1 tile
+    // de 6 é enorme e de 30 é imperceptível, enquanto 10% é 10% em qualquer
+    // nível. Os limites: em 6 o personagem de 3,2 tiles toma metade da tela;
+    // em 30 cabe quase o mapa de 32 inteiro.
+    private const float CameraZoomStep = 1.1f;
+    private const float CameraSizeMin = 6.0f;
+    private const float CameraSizeMax = 30.0f;
+
+    /// Zoom VIVO, pelo mesmo motivo dos ângulos.
+    private float _cameraSize = CameraSize;
+
     // Quanto dura a volta à isométrica no duplo clique. Curto o bastante para
     // não parecer que a câmera travou, longo o bastante para o olho acompanhar
     // de onde ela veio — que é o ponto de animar em vez de saltar.
     private const double CameraResetSeconds = 0.35;
 
     private Vector3 _cameraResetFrom;
+    private float _cameraResetSizeFrom;
 
     /// Tempo decorrido da volta; negativo quer dizer que não há volta em curso.
     private double _cameraResetElapsed = -1.0;
@@ -185,15 +198,21 @@ public sealed partial class Main : Node3D
             }
             else if (arg.StartsWith("--camera=", System.StringComparison.Ordinal))
             {
+                var culture = System.Globalization.CultureInfo.InvariantCulture;
                 var parts = arg["--camera=".Length..].Split(',');
-                if (parts.Length == 2
-                    && float.TryParse(parts[0], System.Globalization.CultureInfo.InvariantCulture,
-                                      out var yaw)
-                    && float.TryParse(parts[1], System.Globalization.CultureInfo.InvariantCulture,
-                                      out var pitch))
+                if (parts.Length is 2 or 3
+                    && float.TryParse(parts[0], culture, out var yaw)
+                    && float.TryParse(parts[1], culture, out var pitch))
                 {
                     _cameraAngles = new Vector3(
                         Mathf.Clamp(pitch, CameraPitchMin, CameraPitchMax), yaw, 0.0f);
+                }
+                // Terceiro valor, opcional: o zoom. Passa pelo MESMO clamp da
+                // roda, para a captura provar os limites reais e não um valor
+                // que o jogador nunca alcança.
+                if (parts.Length == 3 && float.TryParse(parts[2], culture, out var size))
+                {
+                    _cameraSize = Mathf.Clamp(size, CameraSizeMin, CameraSizeMax);
                 }
             }
             else if (arg == "--freeze-animations")
@@ -216,7 +235,11 @@ public sealed partial class Main : Node3D
         }
 
         // A câmera já foi montada em BuildEnvironment, antes de ler a linha de
-        // comando; --camera só vale depois de reaplicar.
+        // comando; --camera só vale depois de reaplicar — ângulos E zoom. O
+        // zoom fica fora de ApplyCameraAngles de propósito, para o modo de
+        // pré-visualização do mapa poder usar o próprio Size; ele roda depois
+        // daqui e sobrescreve.
+        _camera.Size = _cameraSize;
         ApplyCameraAngles();
 
         if (_mapPreview)
@@ -295,7 +318,7 @@ public sealed partial class Main : Node3D
         {
             Name = "Camera",
             Projection = Camera3D.ProjectionType.Orthogonal,
-            Size = CameraSize,
+            Size = _cameraSize,
             RotationDegrees = _cameraAngles,
             // Ortogonal: a distância não muda o enquadramento, só precisa
             // passar do `near` e manter a cena dentro do `far`.
@@ -906,6 +929,17 @@ public sealed partial class Main : Node3D
             }
             return;
         }
+        // Roda do mouse dá zoom. Só na DESCIDA: cada rolagem chega como um par
+        // pressionado/solto, e tratar os dois daria passo dobrado.
+        if (@event is InputEventMouseButton { Pressed: true } wheel
+            && wheel.ButtonIndex is MouseButton.WheelUp or MouseButton.WheelDown)
+        {
+            ZoomCamera(wheel.ButtonIndex == MouseButton.WheelUp
+                ? 1.0f / CameraZoomStep
+                : CameraZoomStep);
+            return;
+        }
+
         if (@event is InputEventMouseButton { ButtonIndex: MouseButton.Right } rightButton)
         {
             // Duplo clique volta para a isométrica, como no Ragnarok: depois de
@@ -1057,11 +1091,24 @@ public sealed partial class Main : Node3D
     /// duas desenhadas e as outras seis saem de espelho — por isso a pose é
     /// projetada na base viva da câmera a cada quadro, e não tabelada.
     /// </summary>
-    /// Começa a volta suave para a isométrica de partida.
+    /// Começa a volta suave para a câmera de partida — ângulo E zoom. O pedido
+    /// foi "câmera inicial", e zoom é parte dela.
     private void ResetCamera()
     {
         _cameraResetFrom = _cameraAngles;
+        _cameraResetSizeFrom = _cameraSize;
         _cameraResetElapsed = 0.0;
+    }
+
+    /// <summary>
+    /// Aproxima ou afasta por um fator. Cancela a volta à isométrica em curso
+    /// pelo mesmo motivo do arrasto: o jogador tomou o controle.
+    /// </summary>
+    private void ZoomCamera(float factor)
+    {
+        _cameraResetElapsed = -1.0;
+        _cameraSize = Mathf.Clamp(_cameraSize * factor, CameraSizeMin, CameraSizeMax);
+        _camera.Size = _cameraSize;
     }
 
     /// <summary>
@@ -1089,15 +1136,20 @@ public sealed partial class Main : Node3D
         _cameraAngles.Y = Mathf.Wrap(
             _cameraResetFrom.Y + ShortestTurn(_cameraResetFrom.Y, CameraAngles.Y) * eased,
             0.0f, 360.0f);
+        // O zoom volta pela mesma curva, para ângulo e enquadramento chegarem
+        // juntos em vez de um terminar antes do outro.
+        _cameraSize = Mathf.Lerp(_cameraResetSizeFrom, CameraSize, eased);
 
         if (t >= 1.0f)
         {
             // Fecha no valor exato: a interpolação pararia a frações de grau do
             // alvo, e a referência da arte é conferida contra ESTE ângulo.
             _cameraAngles = CameraAngles;
+            _cameraSize = CameraSize;
             _cameraResetElapsed = -1.0;
         }
 
+        _camera.Size = _cameraSize;
         ApplyCameraAngles();
     }
 
