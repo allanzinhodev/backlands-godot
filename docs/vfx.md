@@ -34,6 +34,35 @@ que o código usa: `VfxLibrary.Load("impact_fire_explosion")`.
 | `pivot` | O ponto da arte que deve cair **nos pés do alvo**, em pixels a partir do canto superior esquerdo. Não é o centro do quadro |
 | `on_ground` | Decide o modo de desenho (abaixo) |
 | `fps`, `loop` | Ritmo e se a animação repete |
+| `lift_tiles` | *(opcional)* Sobrescreve o levantamento deste efeito, em tiles |
+
+## O levantamento
+
+O pacote documenta que o pivô de um impacto é **os pés do alvo**, e para o jogo
+dele isso está certo: 2D oblíquo, personagem da altura de um tile, e a
+sobreposição resolvida por **ordem de desenho** — a camada `back`/`ground` passa
+atrás do personagem e a `front`/`air` passa na frente, envolvendo-o.
+
+Aqui nada disso vale. O personagem tem **3,2 tiles** de altura e nós achatamos as
+camadas numa folha só (`full`), então perdemos a ordem de desenho e sobrou a
+altura como única ferramenta. Ancorado no pé, o efeito estoura nos tornozelos.
+
+Por isso os impactos sobem **meio tile** (`DefaultLiftTiles = 0.5`, ou 32 px na
+grade de 64 px/tile do pacote). O número foi medido, não escolhido: a 0,5 a
+explosão cobre o tronco e as fagulhas ainda tocam o chão; a 1,6 (meio corpo) ela
+passa da cabeça e descola do alvo.
+
+**Círculos de chão não sobem.** Além de o chão ser o lugar deles, o quadro deles
+é *deitado*: o `Offset` é aplicado nos vértices em espaço local, e com o sprite
+girado −90° em X o +Y local aponta para o **norte do mapa**. Levantar um círculo
+pelo offset não o levantaria — deslizaria ele meio tile para o norte, para fora
+dos pés.
+
+**O que isto custa:** 196 dos 211 impactos do pacote trazem uma camada `ground`
+(marca de queimado, rachadura no piso) e nós a usamos embutida na folha `full`,
+então ela sobe junto. A meio tile o descolamento é quase imperceptível; se um dia
+incomodar, o caminho fiel ao pacote é usar as duas folhas separadas — `ground`
+sem levantar, `main` levantando.
 
 ## Dois modos de desenho
 
@@ -68,6 +97,19 @@ billboard para a **câmera**, não para a luz.
 **O efeito nasce na posição interpolada**, não na célula. Durante uma caminhada
 a célula já é o destino, e o efeito apareceria à frente do personagem.
 
+**O efeito é empurrado 5 cm na direção da câmera** (`DepthBias`). Efeito e
+personagem nascem na mesma origem e os dois são billboard, logo os dois quadros
+ficam coplanares; o personagem escreve profundidade no pré-passe (corte em alpha)
+e o efeito testa contra ela. Empate de profundidade tem desempate indefinido — e
+agora que o efeito sobe até o tronco, a silhueta disputada é máxima. Em projeção
+**ortogonal** andar na direção da câmera não mexe um pixel na tela, então o
+desempate sai de graça.
+
+**A fumaça é pontilhada de propósito.** O pacote desenha translucidez com
+dithering ordenado, no estilo da arte. O xadrez que aparece nos quadros finais de
+uma explosão está **no PNG**, não no nosso renderizador — já perdi tempo caçando
+isso como se fosse bug de mesclagem.
+
 **Efeito em loop morre por prazo.** Um círculo mágico nunca emite
 `AnimationFinished`; o prazo (`LoopingSeconds`) cobre os dois casos com a mesma
 regra. Quando as skills existirem, quem define a duração é o servidor.
@@ -89,14 +131,24 @@ acumularia erro e cortaria a última coluna.
 ## Conferindo um efeito
 
 ```powershell
-# aciona o slot N ao entrar no mundo e fotografa
-godot --path . -- --autologin=Teste --cast=1 --screenshot=.playtest/cast.png --screenshot-delay=10
+# aciona o slot N ao entrar no mundo e fotografa, sempre no mesmo quadro
+godot --path . -- --autologin=Teste --cast=1 --freeze-animations `
+      --screenshot=.playtest/cast.png --screenshot-delay=90
 ```
 
-O atraso é em **frames**, não em segundos — e frame não é relógio. Os primeiros
-frames depois de entrar no mundo são lentos (compilação de shader, construção do
-mapa) e podem comer meio segundo de animação. Para pegar o auge de uma explosão
-de 1 s, 10 frames; com 30 já se fotografa a fumaça.
+Use **sempre `--freeze-animations`**. Sem ele o quadro fotografado depende de
+quanto a máquina demorou para compilar shader na partida: o atraso é contado em
+frames, e os primeiros frames depois de entrar no mundo são lentos o bastante
+para comer meio segundo de animação. Duas execuções nunca comparam a mesma coisa,
+e dá para passar um bom tempo achando que a explosão está cinza quando o que se
+fotografou foi a fumaça.
+
+Congelado, o efeito para no **quadro do meio** — o primeiro de uma explosão é
+quase vazio e não diz nada sobre tamanho nem posição.
+
+Reinicie o servidor antes de cada captura (`Get-Process backlands_server |
+Stop-Process`). Os monstros vagam e se acumulam em cima do ponto de entrada, e
+depois de algumas execuções a captura sai com um lobo na frente do personagem.
 
 ## Como adicionar outro efeito do pacote
 

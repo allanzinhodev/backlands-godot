@@ -16,6 +16,19 @@ public sealed partial class VfxPlayer : Node3D
     /// não há skills de verdade, é o que impede um círculo de ficar para sempre.
     private const float LoopingSeconds = 3.0f;
 
+    /// Quanto o efeito é empurrado na direção da câmera, em unidades de mundo.
+    ///
+    /// Efeito e personagem nascem na MESMA origem e os dois são billboard, logo
+    /// os dois quadros ficam coplanares. O personagem usa corte em alpha, que
+    /// escreve profundidade no pré-passe; o efeito não escreve mas TESTA contra
+    /// ela. Empate de profundidade é desempate indefinido: hoje o efeito aparece
+    /// na frente, amanhã pode piscar atrás. Agora que ele é levantado até o
+    /// tronco, a silhueta disputada é máxima.
+    ///
+    /// Em projeção ORTOGONAL, andar na direção da câmera não mexe um pixel na
+    /// tela — o desempate sai de graça.
+    private const float DepthBias = 0.05f;
+
     private float _lifetime = 1.0f;
 
     /// Monta o nó do efeito. Quem chama adiciona à cena; o tempo de vida só
@@ -63,8 +76,28 @@ public sealed partial class VfxPlayer : Node3D
 
     public override void _Ready()
     {
+        // GlobalBasis.Z da câmera aponta para o observador: no Godot a câmera
+        // olha ao longo do -Z dela.
+        var camera = GetViewport().GetCamera3D();
+        if (camera != null)
+        {
+            Position += camera.GlobalBasis.Z * DepthBias;
+        }
+
         var sprite = GetNode<AnimatedSprite3D>("Sprite");
         sprite.Play(VfxEffect.AnimationName);
+
+        // Congelado, o efeito para no quadro do meio em vez do primeiro: o
+        // primeiro de uma explosão é quase vazio, e uma captura dele não diz
+        // nada sobre tamanho nem posição. Sem isto, o quadro fotografado
+        // dependia de quanto a máquina demorou para compilar shader na
+        // partida, e duas execuções nunca comparavam a mesma coisa.
+        if (Game.EntityView.FreezeAnimations)
+        {
+            sprite.SpeedScale = 0.0f;
+            sprite.Frame = sprite.SpriteFrames.GetFrameCount(VfxEffect.AnimationName) / 2;
+            return;
+        }
 
         // Prazo em vez do sinal de fim: um efeito em loop nunca emitiria o
         // sinal, e o prazo cobre os dois casos com a mesma regra.

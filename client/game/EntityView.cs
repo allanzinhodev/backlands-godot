@@ -89,11 +89,17 @@ public sealed partial class EntityView : Node3D
         _sprite = new AnimatedSprite3D
         {
             Name = "Sprite",
-            // FIXED_Y e não ENABLED: billboard completo inclinaria o sprite
-            // para encarar a câmera inclinada, e o personagem ficaria deitado
-            // para trás em vez de em pé.
+            // ENABLED e não FIXED_Y: o billboard completo substitui a base do
+            // nó pela da câmera, então o quadro é desenhado inteiro, de frente.
+            // FIXED_Y manteria o quadro vertical no MUNDO, e a câmera a -45° o
+            // achataria em cos(45°) — foi o bug do personagem amassado.
             Billboard = BaseMaterial3D.BillboardModeEnum.Enabled,
-            // Pivô nos pés: offset.y POSITIVO sobe o sprite no 3D.
+            // Pivô nos pés: offset.y POSITIVO sobe o sprite.
+            //
+            // Sob billboard o Y do offset é o de cima da TELA, não o do mundo:
+            // os pés caem na origem do nó em projeção. É por isso que levantar
+            // um efeito pelo offset dele acompanha o personagem em qualquer
+            // ângulo de câmera, e levantar pela posição do nó não acompanharia.
             Offset = new Vector2(0, SpriteLayout.FrameHeight / 2.0f),
             TextureFilter = BaseMaterial3D.TextureFilterEnum.Nearest,
             AlphaCut = SpriteBase3D.AlphaCutMode.Discard,

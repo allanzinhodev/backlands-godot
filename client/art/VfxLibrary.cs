@@ -21,9 +21,9 @@ public sealed class VfxEffect
     /// unidade — então o efeito fica na escala do mapa sem ajuste manual.
     public required float PixelSize { get; init; }
 
-    /// Deslocamento em pixels que leva o pivô declarado no pacote até a origem
-    /// do nó. É o que faz o efeito nascer nos pés do personagem, e não
-    /// centrado no quadro.
+    /// Deslocamento em pixels que leva o pivô declarado no pacote até o ponto
+    /// de ancoragem no alvo, já incluindo o levantamento (ver
+    /// <see cref="VfxLibrary"/>).
     public required Vector2 Offset { get; init; }
 
     public required float Fps { get; init; }
@@ -49,6 +49,19 @@ public sealed class VfxEffect
 /// </summary>
 public static class VfxLibrary
 {
+    /// A que altura o efeito é ancorado no alvo, em tiles acima dos pés.
+    ///
+    /// O pacote ancora o pivô NOS PÉS, e está certo para o jogo dele: 2D
+    /// oblíquo, personagem da altura de um tile, e a sobreposição resolvida por
+    /// ordem de desenho (camada atrás / na frente). Aqui o personagem tem 3,2
+    /// tiles e nós achatamos as camadas numa folha só, então sobrou a altura
+    /// como única ferramenta — e no pé o efeito estoura nos tornozelos.
+    ///
+    /// Meio tile foi medido, não chutado: a 0,5 a explosão cobre o tronco e as
+    /// fagulhas ainda tocam o chão; a 1,6 (meio corpo) ela passa da cabeça e
+    /// descola do alvo. Cada efeito pode discordar por "lift_tiles" no JSON.
+    private const float DefaultLiftTiles = 0.5f;
+
     private static readonly Dictionary<string, VfxEffect?> Cache = new();
 
     public static VfxEffect? Load(string id)
@@ -146,6 +159,15 @@ public static class VfxLibrary
             });
         }
 
+        // O círculo mágico NÃO sobe: o chão é o lugar dele. E o quadro dele é
+        // deitado, então um deslocamento no Y da textura andaria para o norte
+        // em vez de subir — levantar um círculo o moveria de lugar no mapa.
+        var lift = onGround ? 0.0f : DefaultLiftTiles;
+        if (meta.ContainsKey("lift_tiles"))
+        {
+            lift = (float)meta["lift_tiles"];
+        }
+
         return new VfxEffect
         {
             Id = id,
@@ -154,7 +176,15 @@ public static class VfxLibrary
             // Um tile do pacote vira um tile do nosso mundo.
             PixelSize = 1.0f / tileSize,
             // No Sprite3D o +Y do offset SOBE, ao contrário do espaço da imagem.
-            Offset = new Vector2(frameWidth / 2.0f - pivotX, pivotY - frameHeight / 2.0f),
+            //
+            // O levantamento entra AQUI, e não na posição do nó: o quadro é
+            // billboard, então seu Y local é o de cima da TELA, e subir por ele
+            // acompanha o personagem — que também é billboard. Subir pela
+            // posição do nó seria subir no Y do MUNDO, que a câmera inclinada
+            // encurta em cos(45°): o efeito pararia abaixo do alvo.
+            Offset = new Vector2(
+                frameWidth / 2.0f - pivotX,
+                pivotY - frameHeight / 2.0f + lift * tileSize),
             Fps = fps,
             Loops = loops,
             OnGround = onGround,
